@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const pool = require('./config/db');
 
 // Import routes
 const healthRoutes = require('./routes/health.routes');
