@@ -1,8 +1,14 @@
 const { Pool } = require('pg');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 require('dotenv').config();
 
+const rawUrl = process.env.DATABASE_URL || '';
+const connectionString = rawUrl.replace(/^DATABASE_URL=/, '').trim();
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString,
+  ssl: connectionString.includes('supabase.com') ? { rejectUnauthorized: false } : undefined,
 });
 
 pool.on('connect', () => {

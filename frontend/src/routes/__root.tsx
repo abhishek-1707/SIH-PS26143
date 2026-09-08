@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { IncidentProvider, useIncident } from "../context/IncidentContext";
 
 const NAV = [
   { to: "/", label: "Overview" },
@@ -111,6 +112,18 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <IncidentProvider>
+        <RootLayout />
+      </IncidentProvider>
+    </QueryClientProvider>
+  );
+}
+
+function RootLayout() {
+  const { selectedIncidentId } = useIncident();
+
+  return (
+    <>
       <div className="om-stars" aria-hidden="true" />
       <div className="relative min-h-screen">
         <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur">
@@ -128,6 +141,7 @@ function RootComponent() {
                 <Link
                   key={n.to}
                   to={n.to}
+                  search={{ incident: selectedIncidentId }}
                   activeOptions={{ exact: n.to === "/" }}
                   className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground data-[status=active]:bg-secondary data-[status=active]:text-foreground"
                 >
@@ -144,6 +158,6 @@ function RootComponent() {
           Demonstration console · synthetic Sentinel-1 style detections and AIS tracks
         </footer>
       </div>
-    </QueryClientProvider>
+    </>
   );
 }

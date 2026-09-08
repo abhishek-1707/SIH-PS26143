@@ -239,3 +239,49 @@ export function formatUtc(iso: string) {
   const d = new Date(iso);
   return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
 }
+
+export interface ProbableOrigin {
+  lat: number;
+  lon: number;
+  windowStart: string;
+  windowEnd: string;
+  radiusKm: number;
+}
+
+export interface IncidentInvestigationData {
+  spillId: string;
+  spillPolygon?: [number, number][] | undefined;
+  driftPath?: DriftPoint[] | undefined;
+  probableOrigin?: ProbableOrigin | undefined;
+  vessels?: Vessel[] | undefined;
+  suspects?: Suspect[] | undefined;
+}
+
+/**
+ * Mock investigation datasets explicitly keyed by incident ID.
+ * SP-001 has full investigation data.
+ * SP-002 and SP-003 do not have mock investigation data.
+ */
+export const mockIncidentInvestigations: Record<string, IncidentInvestigationData> = {
+  "SP-001": {
+    spillId: "SP-001",
+    spillPolygon,
+    driftPath,
+    probableOrigin,
+    vessels,
+    suspects,
+  },
+  "SP-002": {
+    spillId: "SP-002",
+  },
+  "SP-003": {
+    spillId: "SP-003",
+  },
+};
+
+export function getIncidentInvestigation(spillId?: string | null): IncidentInvestigationData | undefined {
+  if (spillId && mockIncidentInvestigations[spillId]) {
+    return mockIncidentInvestigations[spillId];
+  }
+  return undefined;
+}
