@@ -569,8 +569,7 @@ function AnalysisPage() {
     queryFn: listIncidentScenes,
     retry: false,
   });
-  const mode =
-    sceneId === "upload" ? "UPLOAD" : (scenes.data?.find((s) => s.id === sceneId)?.mode ?? "DEMO");
+  const mode = scenes.data?.find((s) => s.id === sceneId)?.mode ?? "DEMO";
   const { selectedReportId: id, setSelectedReportId: setId } = useIncident();
   const [seconds, setSeconds] = useState(0);
   const history = useQuery({ queryKey: ["incidents"], queryFn: listIncidents, retry: false });
@@ -615,7 +614,6 @@ function AnalysisPage() {
             <option value="demo-arabian-sea">DEMO · Arabian Sea synthetic exercise</option>
             <option value="demo-no-spill">DEMO · No spill exercise</option>
             <option value="demo-inconclusive">DEMO · Inconclusive exercise</option>
-            <option value="upload">UPLOAD · Provide calibrated SAR</option>
             {scenes.data
               ?.filter((s) => s.mode === "REAL")
               .map((s) => (
@@ -680,7 +678,7 @@ function AnalysisPage() {
         </label>
         <button
           className={`${button} bg-primary text-primary-foreground`}
-          disabled={analysis.isPending || mode === "UPLOAD"}
+          disabled={analysis.isPending}
           onClick={() => {
             setSeconds(0);
             analysis.mutate(
@@ -716,19 +714,6 @@ function AnalysisPage() {
       <p className="text-sm font-medium">
         Next analysis mode: {mode}. Saved reports retain their original mode and evidence.
       </p>
-      {mode === "UPLOAD" && (
-        <SARUpload
-          disabled={analysis.isPending}
-          forecastHours={horizon}
-          hindcastHours={hindcastHours}
-          onSuccess={(r) => {
-            analysis.reset();
-            client.setQueryData(["incident", r.id], r);
-            setId(r.id);
-            void client.invalidateQueries({ queryKey: ["incidents"] });
-          }}
-        />
-      )}
       {analysis.isPending && (
         <div role="status" className={panel}>
           Computing scientific pipeline on backend · {seconds}s elapsed. Stages will be confirmed

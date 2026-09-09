@@ -167,8 +167,8 @@ function RootLayout() {
           <Outlet />
         </main>
         <footer className="mx-auto max-w-7xl px-5 pb-8 text-[11px] text-muted-foreground">
-          Research console · DEMO is synthetic; REAL/UPLOAD reports label source inputs, inferred
-          candidates, modeled scenarios and unavailable evidence
+          Research console · DEMO is synthetic · REAL reports label source inputs, inferred
+          candidates, modeled scenarios and unavailable evidence · all outputs are analytical, not legal proof
         </footer>
       </div>
     </>
