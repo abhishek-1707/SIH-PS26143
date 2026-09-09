@@ -292,9 +292,35 @@ const getSpillById = async (req, res) => {
   }
 };
 
+const characterizationService = require('../services/characterization.service');
+
+const getSpillCharacterization = async (req, res) => {
+  try {
+    const rawId = req.params.spillId || req.params.id;
+    const dbId = parseSpillDbId(rawId);
+    if (!dbId) {
+      return res.status(404).json({ error: 'Invalid spill ID' });
+    }
+
+    const data = await characterizationService.getSpillCharacterization(dbId);
+    return res.status(200).json(data);
+  } catch (error) {
+    if (error.code === 'NOT_FOUND') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error.code === 'VALIDATION') {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('Error in getSpillCharacterization:', error);
+    return res.status(500).json({ error: 'Internal Server Error', detail: error.message });
+  }
+};
+
 module.exports = {
   getAllSpills,
   getSpillById,
+  getSpillCharacterization,
   parseSpillDbId,
   formatSpillId
 };
+

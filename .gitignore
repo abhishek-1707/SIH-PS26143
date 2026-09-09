@@ -9,3 +9,14 @@ dist/
 
 *.pth
 models/
+
+# Scientific / environmental data (Phase 4A) — NEVER commit these
+*.nc
+*.nc4
+*.grib
+*.grib2
+*.zarr
+*.h5
+*.hdf5
+*.tmp_era5*
+backend/scripts/__pycache__/
