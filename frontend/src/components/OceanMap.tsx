@@ -32,7 +32,13 @@ type Props = {
   legend?: ReactNode | undefined;
 };
 
-export function OceanMap({ children, height = 460, initialZoom = 1, initialCenter, legend }: Props) {
+export function OceanMap({
+  children,
+  height = 460,
+  initialZoom = 1,
+  initialCenter,
+  legend,
+}: Props) {
   const [zoom, setZoom] = useState(initialZoom);
   const initialOffset = (() => {
     if (!initialCenter) return { x: 0, y: 0 };
@@ -231,7 +237,13 @@ export function Marker({
     >
       {pulse && <circle r={14} fill={color} opacity={0.18} className="om-pulse" />}
       <circle r={active ? 8 : 5.5} fill={color} opacity={active ? 1 : 0.85} />
-      <circle r={active ? 14 : 10} fill="none" stroke={color} strokeWidth={active ? 1.8 : 1} opacity={0.7} />
+      <circle
+        r={active ? 14 : 10}
+        fill="none"
+        stroke={color}
+        strokeWidth={active ? 1.8 : 1}
+        opacity={0.7}
+      />
       {label && (
         <text x={16} y={4} fontSize={13} fill="var(--map-label)" className="pointer-events-none">
           {label}

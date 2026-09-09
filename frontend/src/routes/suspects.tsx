@@ -52,7 +52,7 @@ function SuspectsPage() {
   const [sort, setSort] = useState<SortKey>("suspicion");
   const [openId, setOpenId] = useState<string | null>(null);
   const ordered = [...suspects].sort((a, b) => b[sort] - a[sort]);
-  const active = openId ? suspects.find((s) => s.vesselId === openId) ?? null : null;
+  const active = openId ? (suspects.find((s) => s.vesselId === openId) ?? null) : null;
   const activeVessel = openId
     ? (vessels.find((ves) => ves.id === openId) ?? vesselById(openId))
     : null;
@@ -104,7 +104,8 @@ function SuspectsPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Suspect ranking</h1>
           <p className="text-sm text-muted-foreground">
-            Incident {currentIncidentId} · Weighted attribution across proximity, temporal overlap, AIS gap and vessel type
+            Incident {currentIncidentId} · Weighted attribution across proximity, temporal overlap,
+            AIS gap and vessel type
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -192,9 +193,12 @@ function SuspectsPage() {
         </div>
       ) : (
         <Panel className="p-12 text-center">
-          <div className="text-base font-medium text-foreground">Investigation data unavailable</div>
+          <div className="text-base font-medium text-foreground">
+            Investigation data unavailable
+          </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            No candidate vessels or suspicion scores have been attributed for incident {currentIncidentId}. Select SP-001 to view demonstration suspect attribution.
+            No candidate vessels or suspicion scores have been attributed for incident{" "}
+            {currentIncidentId}. Select SP-001 to view demonstration suspect attribution.
           </p>
         </Panel>
       )}

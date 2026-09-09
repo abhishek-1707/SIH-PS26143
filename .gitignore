@@ -20,3 +20,9 @@ models/
 *.hdf5
 *.tmp_era5*
 backend/scripts/__pycache__/
+__pycache__/
+*.pyc
+
+# Local generated incident archives are not source fixtures.
+backend/data/incidents/
+!**/.env.example

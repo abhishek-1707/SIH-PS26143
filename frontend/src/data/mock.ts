@@ -219,7 +219,8 @@ export const suspects: Suspect[] = [
     temporal: 33,
     aisGap: 15,
     vesselType: 36,
-    summary: "High-speed container transit well east of the origin cell, no meaningful reporting gap.",
+    summary:
+      "High-speed container transit well east of the origin cell, no meaningful reporting gap.",
   },
   {
     vesselId: "V-4",
@@ -279,7 +280,9 @@ export const mockIncidentInvestigations: Record<string, IncidentInvestigationDat
   },
 };
 
-export function getIncidentInvestigation(spillId?: string | null): IncidentInvestigationData | undefined {
+export function getIncidentInvestigation(
+  spillId?: string | null,
+): IncidentInvestigationData | undefined {
   if (spillId && mockIncidentInvestigations[spillId]) {
     return mockIncidentInvestigations[spillId];
   }

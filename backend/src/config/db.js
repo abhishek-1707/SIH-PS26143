@@ -8,6 +8,8 @@ const connectionString = rawUrl.replace(/^DATABASE_URL=/, '').trim();
 
 const pool = new Pool({
   connectionString,
+  connectionTimeoutMillis: 3000,
+  query_timeout: 5000,
   ssl: connectionString.includes('supabase.com') ? { rejectUnauthorized: false } : undefined,
 });
 
@@ -16,7 +18,7 @@ pool.on('connect', () => {
 });
 
 pool.on('error', (err) => {
-  console.error('❌ Unexpected DB error', err);
+  console.error('Database connection error:', err.code || 'unavailable');
 });
 
 module.exports = pool;

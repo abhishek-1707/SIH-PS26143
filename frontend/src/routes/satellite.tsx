@@ -50,7 +50,9 @@ function SatellitePage() {
   const spill = selectedSpill;
   const hasPolygon = Boolean(investigation?.spillPolygon && investigation.spillPolygon.length > 0);
   const spillD = hasPolygon
-    ? investigation!.spillPolygon!.map(([lon, lat], i) => `${i ? "L" : "M"}${project(lon, lat).join(" ")}`).join(" ") + " Z"
+    ? investigation!
+        .spillPolygon!.map(([lon, lat], i) => `${i ? "L" : "M"}${project(lon, lat).join(" ")}`)
+        .join(" ") + " Z"
     : "";
 
   if (isLoading) {
@@ -170,8 +172,19 @@ function SatellitePage() {
             </g>
             {hasPolygon && showPolygon && (
               <>
-                <path d={spillD} fill="oklch(0.1 0.02 250 / 0.85)" stroke="var(--accent-cyan)" strokeWidth={2} />
-                <path d={spillD} fill="none" stroke="var(--accent-cyan)" strokeWidth={6} opacity={0.14} />
+                <path
+                  d={spillD}
+                  fill="oklch(0.1 0.02 250 / 0.85)"
+                  stroke="var(--accent-cyan)"
+                  strokeWidth={2}
+                />
+                <path
+                  d={spillD}
+                  fill="none"
+                  stroke="var(--accent-cyan)"
+                  strokeWidth={6}
+                  opacity={0.14}
+                />
               </>
             )}
             <Marker

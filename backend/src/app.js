@@ -17,6 +17,7 @@ app.use(cors());
 app.use(express.json());
 
 // API Routes
+app.use('/api/incidents', require('./routes/incidents.routes'));
 app.use('/api/health', healthRoutes);
 app.use('/api/spills', spillsRoutes);
 app.use('/api/detection', detectionRoutes);
@@ -26,8 +27,12 @@ app.use('/api/reports', reportsRoutes);
 
 // Basic error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Internal Server Error' });
+  const status = Number.isInteger(err.status) && err.status >= 400 && err.status <= 599 ? err.status : 500;
+  console.error(`[api] request failed (${status})`);
+  res.status(status).json({
+    error: status < 500 || status === 503 || status === 504
+      ? err.message : 'Internal Server Error'
+  });
 });
 
 module.exports = app;

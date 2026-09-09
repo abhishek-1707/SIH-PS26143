@@ -85,7 +85,10 @@ export function Modal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="om-fade absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="om-fade absolute inset-0 bg-background/80 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div
         role="dialog"
         aria-modal="true"

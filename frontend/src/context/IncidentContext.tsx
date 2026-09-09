@@ -67,9 +67,8 @@ export function validateIncidentSearch(search: Record<string, unknown>): Inciden
 
 export function IncidentProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
-  const searchIncident = (location.search as Record<string, unknown>)?.[
-    "incident"
-  ] as string | undefined;
+  const searchIncident = (location.search as Record<string, unknown>)?.["incident"] as
+    string | undefined;
 
   const [selectedIncidentId, setSelectedIncidentIdState] = useState<string>(() => {
     if (searchIncident) return searchIncident;
@@ -125,26 +124,27 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
           // ignore
         }
       }
-      (navigate as any)({
-        search: (prev: unknown) => ({
+      void navigate({
+        from: "/",
+        to: ".",
+        search: (prev) => ({
           ...(typeof prev === "object" && prev ? prev : {}),
           incident: id,
         }),
         replace: true,
       });
     },
-    [navigate]
+    [navigate],
   );
 
   // Derive active spill from backend data, defaulting to SP-001
   const selectedSpill = useMemo(() => {
     if (!spills || spills.length === 0) return undefined;
-    const base = (
+    const base =
       spills.find((s) => s.id === selectedIncidentId) ??
       spills.find((s) => s.id === DEFAULT_INCIDENT_ID) ??
       spills.find((s) => s.status === "active") ??
-      spills[0]
-    );
+      spills[0];
     if (!base) return undefined;
     if (dbInvestigation?.spill && dbInvestigation.spill.id === base.id) {
       return { ...base, ...dbInvestigation.spill };
@@ -256,7 +256,7 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
       investigation,
       isInvestigationLoading,
       isInvestigationError,
-    ]
+    ],
   );
 
   return <IncidentContext.Provider value={value}>{children}</IncidentContext.Provider>;

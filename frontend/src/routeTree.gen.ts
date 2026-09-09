@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AisRouteImport } from './routes/ais'
+import { Route as AnalysisRouteImport } from './routes/analysis'
 import { Route as BacktrackingRouteImport } from './routes/backtracking'
 import { Route as SatelliteRouteImport } from './routes/satellite'
 import { Route as SuspectsRouteImport } from './routes/suspects'
@@ -23,6 +24,11 @@ const IndexRoute = IndexRouteImport.update({
 const AisRoute = AisRouteImport.update({
   id: '/ais',
   path: '/ais',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalysisRoute = AnalysisRouteImport.update({
+  id: '/analysis',
+  path: '/analysis',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BacktrackingRoute = BacktrackingRouteImport.update({
@@ -44,6 +50,7 @@ const SuspectsRoute = SuspectsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ais': typeof AisRoute
+  '/analysis': typeof AnalysisRoute
   '/backtracking': typeof BacktrackingRoute
   '/satellite': typeof SatelliteRoute
   '/suspects': typeof SuspectsRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ais': typeof AisRoute
+  '/analysis': typeof AnalysisRoute
   '/backtracking': typeof BacktrackingRoute
   '/satellite': typeof SatelliteRoute
   '/suspects': typeof SuspectsRoute
@@ -59,21 +67,31 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/ais': typeof AisRoute
+  '/analysis': typeof AnalysisRoute
   '/backtracking': typeof BacktrackingRoute
   '/satellite': typeof SatelliteRoute
   '/suspects': typeof SuspectsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/ais' | '/backtracking' | '/satellite' | '/suspects'
+  fullPaths:
+    '/' | '/ais' | '/analysis' | '/backtracking' | '/satellite' | '/suspects'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/ais' | '/backtracking' | '/satellite' | '/suspects'
-  id: '__root__' | '/' | '/ais' | '/backtracking' | '/satellite' | '/suspects'
+  to: '/' | '/ais' | '/analysis' | '/backtracking' | '/satellite' | '/suspects'
+  id:
+    | '__root__'
+    | '/'
+    | '/ais'
+    | '/analysis'
+    | '/backtracking'
+    | '/satellite'
+    | '/suspects'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AisRoute: typeof AisRoute
+  AnalysisRoute: typeof AnalysisRoute
   BacktrackingRoute: typeof BacktrackingRoute
   SatelliteRoute: typeof SatelliteRoute
   SuspectsRoute: typeof SuspectsRoute
@@ -93,6 +111,13 @@ declare module '@tanstack/react-router' {
       path: '/ais'
       fullPath: '/ais'
       preLoaderRoute: typeof AisRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analysis': {
+      id: '/analysis'
+      path: '/analysis'
+      fullPath: '/analysis'
+      preLoaderRoute: typeof AnalysisRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/backtracking': {
@@ -122,6 +147,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AisRoute: AisRoute,
+  AnalysisRoute: AnalysisRoute,
   BacktrackingRoute: BacktrackingRoute,
   SatelliteRoute: SatelliteRoute,
   SuspectsRoute: SuspectsRoute,

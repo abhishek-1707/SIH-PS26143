@@ -106,7 +106,8 @@ function BacktrackingPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Drift backtracking</h1>
           <p className="text-sm text-muted-foreground">
-            Incident {spill.id} · Reverse Lagrangian advection · surface current 0.34 m/s bearing 246° · 3% wind leeway
+            Incident {spill.id} · Reverse Lagrangian advection · surface current 0.34 m/s bearing
+            246° · 3% wind leeway
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -184,7 +185,9 @@ function BacktrackingPage() {
                 label="Probable origin"
               />
             )}
-            {point && <Marker lon={point.lon} lat={point.lat} color="var(--accent-blue)" pulse active />}
+            {point && (
+              <Marker lon={point.lon} lat={point.lat} color="var(--accent-blue)" pulse active />
+            )}
           </OceanMap>
 
           {hasDrift ? (
@@ -231,9 +234,12 @@ function BacktrackingPage() {
             </div>
           ) : (
             <div className="mt-5 rounded-md border border-border bg-secondary/30 p-4 text-center">
-              <div className="text-sm font-medium text-foreground">Investigation data unavailable</div>
+              <div className="text-sm font-medium text-foreground">
+                Investigation data unavailable
+              </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Reverse Lagrangian drift backtracking has not been computed for incident {spill.id}. Select SP-001 to review demonstration drift model.
+                Reverse Lagrangian drift backtracking has not been computed for incident {spill.id}.
+                Select SP-001 to review demonstration drift model.
               </p>
             </div>
           )}

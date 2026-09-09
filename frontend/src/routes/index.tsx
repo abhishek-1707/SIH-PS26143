@@ -51,7 +51,9 @@ function OverviewPage() {
 
   const hasPolygon = Boolean(investigation?.spillPolygon && investigation.spillPolygon.length > 0);
   const spillD = hasPolygon
-    ? investigation!.spillPolygon!.map(([lon, lat], i) => `${i ? "L" : "M"}${project(lon, lat).join(" ")}`).join(" ") + " Z"
+    ? investigation!
+        .spillPolygon!.map(([lon, lat], i) => `${i ? "L" : "M"}${project(lon, lat).join(" ")}`)
+        .join(" ") + " Z"
     : "";
 
   const hasDrift = Boolean(investigation?.driftPath && investigation.driftPath.length > 0);
@@ -147,7 +149,13 @@ function OverviewPage() {
           }
         >
           {hasPolygon && (
-            <path d={spillD} fill="var(--accent-cyan)" fillOpacity={0.16} stroke="var(--accent-cyan)" strokeWidth={1.6} />
+            <path
+              d={spillD}
+              fill="var(--accent-cyan)"
+              fillOpacity={0.16}
+              stroke="var(--accent-cyan)"
+              strokeWidth={1.6}
+            />
           )}
           {hasDrift && (
             <path
@@ -206,8 +214,8 @@ function OverviewPage() {
           {selectedVessel
             ? `Selected ${vesselById(selectedVessel).name} · MMSI ${vesselById(selectedVessel).mmsi}`
             : hasVessels
-            ? "Click a vessel or spill marker (e.g. SP-001) to inspect and focus investigation."
-            : `Investigation data unavailable for ${activeSpill.id}. Select SP-001 to review backtracked drift and vessel correlation.`}
+              ? "Click a vessel or spill marker (e.g. SP-001) to inspect and focus investigation."
+              : `Investigation data unavailable for ${activeSpill.id}. Select SP-001 to review backtracked drift and vessel correlation.`}
         </p>
       </Panel>
 
@@ -275,7 +283,9 @@ function OverviewPage() {
             </>
           ) : (
             <div className="py-6 text-center">
-              <div className="text-sm font-medium text-foreground">Investigation data unavailable</div>
+              <div className="text-sm font-medium text-foreground">
+                Investigation data unavailable
+              </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 Drift backtracking model has not been run for {activeSpill.id}.
               </p>
@@ -321,7 +331,9 @@ function OverviewPage() {
           ) : (
             <>
               <div className="py-6 text-center">
-                <div className="text-sm font-medium text-foreground">Investigation data unavailable</div>
+                <div className="text-sm font-medium text-foreground">
+                  Investigation data unavailable
+                </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   AIS correlation has not been performed for {activeSpill.id}.
                 </p>

@@ -19,7 +19,8 @@ export const Route = createFileRoute("/ais")({
       { property: "og:title", content: "AIS Vessel Analysis — Oil Spill Correlation" },
       {
         property: "og:description",
-        content: "Candidate vessel tracks, reporting gaps and selection details on an interactive map.",
+        content:
+          "Candidate vessel tracks, reporting gaps and selection details on an interactive map.",
       },
     ],
   }),
@@ -108,7 +109,8 @@ function AisPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">AIS vessel analysis</h1>
           <p className="text-sm text-muted-foreground">
-            Incident {spill.id} · {vessels.length} candidate vessels within the drift envelope during the release window
+            Incident {spill.id} · {vessels.length} candidate vessels within the drift envelope
+            during the release window
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -145,12 +147,19 @@ function AisPage() {
                   ? "Track history 12 h · dashed segments indicate reporting gaps"
                   : `Candidate vessel tracks for ${spill.id}`}
                 <div className="mt-1">
-                  {hasVessels ? "Click a vessel marker to open its record" : "Detected spill centroid"}
+                  {hasVessels
+                    ? "Click a vessel marker to open its record"
+                    : "Detected spill centroid"}
                 </div>
               </div>
             }
           >
-            <Marker lon={spill.location.longitude} lat={spill.location.latitude} label={spill.id} pulse />
+            <Marker
+              lon={spill.location.longitude}
+              lat={spill.location.latitude}
+              label={spill.id}
+              pulse
+            />
             {probableOrigin && (
               <Marker
                 lon={probableOrigin.lon}
@@ -187,9 +196,12 @@ function AisPage() {
           </OceanMap>
           {!hasVessels && (
             <div className="mt-4 rounded-md border border-border bg-secondary/30 p-4 text-center">
-              <div className="text-sm font-medium text-foreground">Investigation data unavailable</div>
+              <div className="text-sm font-medium text-foreground">
+                Investigation data unavailable
+              </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                No candidate AIS tracks or vessel correlations found for incident {spill.id}. Select SP-001 to review demonstration AIS correlation.
+                No candidate AIS tracks or vessel correlations found for incident {spill.id}. Select
+                SP-001 to review demonstration AIS correlation.
               </p>
             </div>
           )}
@@ -256,7 +268,9 @@ function AisPage() {
           <KeyVal k="Reporting gap" v={`${selected.aisGapMin} min`} />
           <KeyVal k="Track points" v={selected.track.length} />
           {score && <KeyVal k="Suspicion score" v={score.suspicion} />}
-          {score && <p className="mt-4 text-[13px] leading-6 text-muted-foreground">{score.summary}</p>}
+          {score && (
+            <p className="mt-4 text-[13px] leading-6 text-muted-foreground">{score.summary}</p>
+          )}
         </Modal>
       )}
     </div>
