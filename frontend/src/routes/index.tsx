@@ -1,13 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { fetchSpills, formatSpillAge } from "../api/spills";
-import { Marker, OceanMap, pathFrom, project } from "../components/OceanMap";
-import { KeyVal, Modal, Panel, Stat, StatusDot } from "../components/ui-kit";
-import { useIncident, validateIncidentSearch } from "../context/IncidentContext";
-import { formatUtc, vesselById } from "../data/mock";
+import { OceanMap, pathFrom, project } from "../components/OceanMap";
+import { KeyVal, Panel, Stat, StatusDot } from "../components/ui-kit";
+import { useIncident } from "../context/IncidentContext";
 
 export const Route = createFileRoute("/")({
-  validateSearch: validateIncidentSearch,
   head: () => ({
     meta: [
       { title: "Overview — Oil Spill Detection & Vessel Attribution" },
@@ -23,93 +19,70 @@ export const Route = createFileRoute("/")({
       },
     ],
   }),
-  loader: async () => {
-    try {
-      return await fetchSpills();
-    } catch {
-      return undefined;
-    }
-  },
   component: OverviewPage,
 });
 
+const utc = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
+};
+
 function OverviewPage() {
-  const {
-    selectedIncidentId,
-    setSelectedIncidentId,
-    selectedSpill,
-    spills,
-    isLoading,
-    isError,
-    refetch,
-    investigation,
-  } = useIncident();
-  const [selectedVessel, setSelectedVessel] = useState<string | null>(null);
-  const [modal, setModal] = useState(false);
+  const { activeReport } = useIncident();
 
-  const activeSpill = selectedSpill;
+  if (!activeReport) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Operations overview</h1>
+          <p className="text-sm text-muted-foreground">
+            Arabian Sea sector · no active incident analysis
+          </p>
+        </div>
+        <Panel className="flex flex-col items-center justify-center p-12 text-center">
+          <p className="text-sm font-medium text-foreground">No active incident analysis</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Run an analysis from{" "}
+            <Link to="/analysis" className="text-primary underline">
+              Analyze Incident
+            </Link>{" "}
+            or open a saved report.
+          </p>
+        </Panel>
+      </div>
+    );
+  }
 
-  const hasPolygon = Boolean(investigation?.spillPolygon && investigation.spillPolygon.length > 0);
+  const report = activeReport;
+  const { spill, origin, candidates, anomalies, outcome } = report;
+  const topCandidate = candidates[0] ?? null;
+  const noSpill = outcome === "NO_SPILL_DETECTED" || outcome === "ANALYSIS_INCONCLUSIVE" || !spill;
+
+  // Build spill polygon path from the detection geometry.
+  const spillCoords: [number, number][] =
+    spill?.geometry.coordinates[0]?.map(([lon, lat]) => [lon, lat]) ?? [];
+  const hasPolygon = spillCoords.length > 0;
   const spillD = hasPolygon
-    ? investigation!
-        .spillPolygon!.map(([lon, lat], i) => `${i ? "L" : "M"}${project(lon, lat).join(" ")}`)
+    ? spillCoords
+        .map(([lon, lat], i) => `${i ? "L" : "M"}${project(lon, lat).join(" ")}`)
         .join(" ") + " Z"
     : "";
 
-  const hasDrift = Boolean(investigation?.driftPath && investigation.driftPath.length > 0);
-  const hasProbableOrigin = Boolean(investigation?.probableOrigin);
-  const hasVessels = Boolean(investigation?.vessels && investigation.vessels.length > 0);
-  const hasSuspects = Boolean(investigation?.suspects && investigation.suspects.length > 0);
+  // Drift path (hindcast backward trajectory).
+  const driftPath = report.backward ?? [];
+  const hasDrift = driftPath.length > 0;
 
-  const top = hasSuspects ? investigation!.suspects![0]! : null;
-  const topVessel = top
-    ? (investigation?.vessels?.find((v) => v.id === top.vesselId) ?? vesselById(top.vesselId))
-    : null;
-
-  if (isLoading) {
-    return (
-      <div className="space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Operations overview</h1>
-            <p className="text-sm text-muted-foreground">
-              Arabian Sea sector · one active detection under attribution review
-            </p>
-          </div>
-        </div>
-        <Panel className="flex items-center justify-center p-12 text-center">
-          <p className="text-sm text-muted-foreground">Loading spill data...</p>
-        </Panel>
-      </div>
-    );
-  }
-
-  if (isError || !activeSpill) {
-    return (
-      <div className="space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Operations overview</h1>
-            <p className="text-sm text-muted-foreground">
-              Arabian Sea sector · one active detection under attribution review
-            </p>
-          </div>
-        </div>
-        <Panel className="flex flex-col items-center justify-center p-12 text-center">
-          <p className="text-sm text-muted-foreground">
-            Unable to load spill data. Make sure the backend is running.
-          </p>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="mt-4 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            Retry
-          </button>
-        </Panel>
-      </div>
-    );
-  }
+  // Map center: prefer spill centroid, then origin, then scene center.
+  const mapCenter: [number, number] = spill
+    ? [spill.metrics.centroid.lon, spill.metrics.centroid.lat]
+    : origin
+      ? [origin.lon, origin.lat]
+      : report.scene.bbox
+        ? [
+            (report.scene.bbox[0] + report.scene.bbox[2]) / 2,
+            (report.scene.bbox[1] + report.scene.bbox[3]) / 2,
+          ]
+        : [72.45, 15.25];
 
   return (
     <div className="space-y-5">
@@ -117,32 +90,44 @@ function OverviewPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Operations overview</h1>
           <p className="text-sm text-muted-foreground">
-            Arabian Sea sector · incident {activeSpill.id} under attribution review
+            {report.mode} analysis · report {report.id.slice(0, 12)} · {report.status}
           </p>
         </div>
-        <StatusDot label={`${activeSpill.id} ${activeSpill.status}`} />
+        <StatusDot label={`${report.outcome ?? report.status}`} />
       </div>
+
+      {noSpill && (
+        <div className="rounded border border-amber-400/40 bg-card/70 p-4 text-sm">
+          <strong>{outcome ?? report.status}</strong>
+          {report.outcomeMessage && <p className="mt-1">{report.outcomeMessage}</p>}
+          {report.outcomeReason && (
+            <p className="mt-1 text-xs text-muted-foreground">{report.outcomeReason}</p>
+          )}
+        </div>
+      )}
 
       <Panel className="overflow-hidden">
         <OceanMap
           height={430}
-          initialCenter={[activeSpill.location.longitude, activeSpill.location.latitude]}
+          initialCenter={mapCenter}
           legend={
             <div className="space-y-1">
-              <div>
-                <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-cyan)]" />
-                Detected slick ({activeSpill.id})
-              </div>
-              {hasProbableOrigin && (
+              {hasPolygon && (
                 <div>
-                  <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-amber)]" />
-                  Probable origin
+                  <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-cyan)]" />
+                  Detected slick
                 </div>
               )}
-              {hasVessels && (
+              {origin && (
+                <div>
+                  <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-amber)]" />
+                  Modeled origin
+                </div>
+              )}
+              {candidates.length > 0 && (
                 <div>
                   <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-blue)]" />
-                  AIS vessels
+                  Candidate vessels
                 </div>
               )}
             </div>
@@ -159,7 +144,7 @@ function OverviewPage() {
           )}
           {hasDrift && (
             <path
-              d={pathFrom(investigation!.driftPath!.map((p) => [p.lon, p.lat]))}
+              d={pathFrom(driftPath.map((p) => [p.lon, p.lat]))}
               fill="none"
               stroke="var(--accent-amber)"
               strokeWidth={1.4}
@@ -167,133 +152,109 @@ function OverviewPage() {
               opacity={0.8}
             />
           )}
-          {spills?.map((spill) => (
-            <Marker
-              key={spill.id}
-              lon={spill.location.longitude}
-              lat={spill.location.latitude}
-              pulse={spill.status === "active"}
-              active={spill.id === activeSpill.id}
-              label={spill.id}
-              onClick={() => setSelectedIncidentId(spill.id)}
-            />
-          ))}
-          {hasProbableOrigin && (
-            <Marker
-              lon={investigation!.probableOrigin!.lon}
-              lat={investigation!.probableOrigin!.lat}
-              color="var(--accent-amber)"
-              label="Probable origin"
-            />
-          )}
-          {hasVessels &&
-            investigation!.vessels!.map((v) => {
-              const last = v.track[v.track.length - 1]!;
+          {origin &&
+            (() => {
+              const [ox, oy] = project(origin.lon, origin.lat);
               return (
-                <g key={v.id}>
-                  <path
-                    d={pathFrom(v.track)}
-                    fill="none"
-                    stroke="var(--accent-blue)"
-                    strokeWidth={1}
-                    opacity={selectedVessel === v.id ? 0.9 : 0.4}
-                  />
-                  <Marker
-                    lon={last[0]}
-                    lat={last[1]}
-                    color="var(--accent-blue)"
-                    active={selectedVessel === v.id}
-                    label={selectedVessel === v.id ? v.name : undefined}
-                    onClick={() => setSelectedVessel(selectedVessel === v.id ? null : v.id)}
-                  />
+                <g>
+                  <circle cx={ox} cy={oy} r={6} fill="var(--accent-amber)" opacity={0.8} />
+                  <text x={ox + 8} y={oy + 4} fontSize={10} fill="var(--accent-amber)">
+                    Modeled origin
+                  </text>
                 </g>
               );
-            })}
+            })()}
+          {candidates.map((c, i) => {
+            const colors = ["var(--accent-blue)", "var(--accent-cyan)", "#a78bfa"];
+            const last = c.track[c.track.length - 1];
+            if (!last) return null;
+            const [x, y] = project(last.longitude, last.latitude);
+            return (
+              <g key={c.mmsi}>
+                <path
+                  d={pathFrom(c.track.map((p) => [p.longitude, p.latitude]))}
+                  fill="none"
+                  stroke={colors[i % colors.length]}
+                  strokeWidth={1}
+                  opacity={0.5}
+                />
+                <circle cx={x} cy={y} r={4} fill={colors[i % colors.length]} opacity={0.8}>
+                  <title>
+                    {c.name} · MMSI {c.mmsi}
+                  </title>
+                </circle>
+              </g>
+            );
+          })}
         </OceanMap>
         <p className="mt-3 text-[11px] text-muted-foreground">
-          {selectedVessel
-            ? `Selected ${vesselById(selectedVessel).name} · MMSI ${vesselById(selectedVessel).mmsi}`
-            : hasVessels
-              ? "Click a vessel or spill marker (e.g. SP-001) to inspect and focus investigation."
-              : `Investigation data unavailable for ${activeSpill.id}. Select SP-001 to review backtracked drift and vessel correlation.`}
+          {candidates.length > 0
+            ? `${candidates.length} candidate vessel(s) identified. Click Suspects tab for attribution detail.`
+            : noSpill
+              ? "No spill detected — vessel attribution not performed."
+              : "Vessel correlation pending or unavailable for this analysis."}
         </p>
       </Panel>
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <Panel
-          title="Active spill"
-          action={
-            spills && spills.length > 1 ? (
-              <div className="flex items-center gap-1" title="Select incident">
-                {spills.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedIncidentId(s.id);
-                    }}
-                    className={`rounded px-1.5 py-0.5 text-[10px] font-mono transition-colors ${
-                      s.id === activeSpill.id
-                        ? "border border-[var(--accent-cyan)]/50 bg-[var(--accent-cyan)]/20 text-[var(--accent-cyan)]"
-                        : "border border-transparent text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {s.id}
-                  </button>
-                ))}
-              </div>
-            ) : undefined
-          }
-        >
-          <div
-            className="cursor-pointer select-none rounded p-0.5 transition-opacity hover:opacity-95"
-            onClick={() => setSelectedIncidentId(activeSpill.id)}
-            title={`Active incident ${activeSpill.id}`}
-          >
+        <Panel title="Detection summary">
+          {spill ? (
             <div className="grid grid-cols-2 gap-4">
+              <Stat label="Area" value={`${spill.metrics.areaKm2} km²`} hint="SAR derived" />
               <Stat
-                label="Detection"
-                value={activeSpill.id}
-                hint={`${activeSpill.status} · ${activeSpill.satelliteSource}`}
+                label="Confidence"
+                value={`${(spill.confidence * 100).toFixed(1)} / 100`}
+                hint="Dark-slick index"
               />
-              <Stat label="Area" value={`${activeSpill.areaKm2} km²`} hint="SAR derived" />
-              <Stat label="Confidence" value={`${activeSpill.confidence}%`} />
-              <Stat label="Age" value={formatSpillAge(activeSpill.estimatedAge)} />
+              {report.age && (
+                <Stat
+                  label="Estimated age"
+                  value={`${report.age.minHours}–${report.age.maxHours} h`}
+                  hint={report.age.confidence}
+                />
+              )}
+              <Stat label="Mode" value={report.mode ?? "DEMO"} hint={report.status} />
             </div>
-            <p className="mt-4 text-[11px] text-muted-foreground">
-              Detected {formatUtc(activeSpill.detectedAt)} at {activeSpill.location.latitude},{" "}
-              {activeSpill.location.longitude}
-            </p>
-          </div>
+          ) : (
+            <div className="py-4 text-center">
+              <p className="text-sm font-medium">{outcome ?? report.status}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {report.outcomeMessage ?? "No spill candidate detected in this scene."}
+              </p>
+            </div>
+          )}
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            Scene: {report.scene.source} · acquired {utc(report.scene.acquiredAt)}
+          </p>
         </Panel>
 
-        <Panel title="Probable origin">
-          {hasProbableOrigin ? (
+        <Panel title="Modeled origin">
+          {origin ? (
             <>
-              <KeyVal
-                k="Position"
-                v={`${investigation!.probableOrigin!.lat}, ${investigation!.probableOrigin!.lon}`}
-              />
-              <KeyVal k="Uncertainty" v={`${investigation!.probableOrigin!.radiusKm} km radius`} />
+              <KeyVal k="Position" v={`${origin.lat.toFixed(5)}° N, ${origin.lon.toFixed(5)}° E`} />
+              <KeyVal k="Uncertainty" v={`${origin.uncertaintyKm} km radius`} />
               <KeyVal
                 k="Release window"
-                v={`${formatUtc(investigation!.probableOrigin!.windowStart).slice(11)} – ${formatUtc(investigation!.probableOrigin!.windowEnd).slice(11)}`}
+                v={`${utc(origin.releaseWindow.start).slice(11)} – ${utc(origin.releaseWindow.end).slice(11)}`}
               />
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Sensitivity radius, not a calibrated uncertainty. Hindcast model only.
+              </p>
             </>
           ) : (
             <div className="py-6 text-center">
               <div className="text-sm font-medium text-foreground">
-                Investigation data unavailable
+                {noSpill ? "No spill — origin not modeled" : "Modeled origin unavailable"}
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Drift backtracking model has not been run for {activeSpill.id}.
+                {noSpill
+                  ? "Drift backtracking is not performed when no spill is detected."
+                  : "Origin hindcast was not computed for this report."}
               </p>
             </div>
           )}
           <Link
             to="/backtracking"
-            search={{ incident: activeSpill.id }}
             className="mt-4 inline-flex rounded-md border border-border px-3 py-1.5 text-xs transition-colors hover:border-primary/60 hover:text-primary"
           >
             Open drift backtracking
@@ -301,46 +262,40 @@ function OverviewPage() {
         </Panel>
 
         <Panel title="Top suspect vessel">
-          {top && topVessel ? (
+          {topCandidate ? (
             <>
-              <div className="text-base font-medium">{topVessel.name}</div>
+              <div className="text-base font-medium">{topCandidate.name}</div>
               <div className="text-[11px] text-muted-foreground">
-                {topVessel.type} · MMSI {topVessel.mmsi} · {topVessel.flag}
+                {topCandidate.type} · MMSI {topCandidate.mmsi}
               </div>
               <div className="mt-3 text-3xl font-semibold tabular-nums text-[var(--accent-cyan)]">
-                {top.suspicion}
-                <span className="ml-1 text-sm text-muted-foreground">suspicion</span>
+                {topCandidate.score}
+                <span className="ml-1 text-sm text-muted-foreground">/ 100</span>
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <Link
-                  to="/suspects"
-                  search={{ incident: activeSpill.id }}
-                  className="inline-flex rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
-                >
-                  View attribution
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => setModal(true)}
-                  className="inline-flex rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
-                >
-                  Quick summary
-                </button>
-              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Compatibility score — not legal attribution. {topCandidate.confidence} confidence.
+              </p>
+              <Link
+                to="/suspects"
+                className="mt-4 inline-flex rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              >
+                View attribution
+              </Link>
             </>
           ) : (
             <>
               <div className="py-6 text-center">
                 <div className="text-sm font-medium text-foreground">
-                  Investigation data unavailable
+                  {noSpill ? "No attribution generated" : "No candidate vessels identified"}
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  AIS correlation has not been performed for {activeSpill.id}.
+                  {noSpill
+                    ? "Vessel correlation is not performed when no spill is detected."
+                    : "No AIS-correlated vessels met the spatial/temporal criteria."}
                 </p>
               </div>
               <Link
                 to="/suspects"
-                search={{ incident: activeSpill.id }}
                 className="mt-4 inline-flex rounded-md border border-border px-3 py-1.5 text-xs transition-colors hover:border-primary/60 hover:text-primary"
               >
                 Open suspect ranking
@@ -350,31 +305,24 @@ function OverviewPage() {
         </Panel>
       </div>
 
-      {top && topVessel && (
-        <Modal
-          open={modal}
-          onClose={() => setModal(false)}
-          title={topVessel.name}
-          subtitle={`Attribution summary · rank #${top.rank}`}
-        >
-          <p className="text-muted-foreground">{top.summary}</p>
-          <div className="mt-4">
-            <KeyVal k="MMSI" v={topVessel.mmsi} />
-            <KeyVal k="Type" v={topVessel.type} />
-            <KeyVal k="Flag" v={topVessel.flag} />
-            <KeyVal k="Last AIS" v={formatUtc(topVessel.lastSeen)} />
-            <KeyVal k="AIS gap" v={`${topVessel.aisGapMin} min`} />
-            <KeyVal k="Suspicion" v={top.suspicion} />
-          </div>
-          <Link
-            to="/suspects"
-            search={{ incident: activeSpill.id }}
-            onClick={() => setModal(false)}
-            className="mt-4 inline-flex rounded-md border border-border px-3 py-1.5 text-xs transition-colors hover:border-primary/60 hover:text-primary"
-          >
-            Open suspect ranking
-          </Link>
-        </Modal>
+      {/* AIS anomalies summary */}
+      {anomalies.length > 0 && (
+        <Panel title="AIS discontinuities detected">
+          <p className="mb-2 text-xs text-muted-foreground">
+            Unobserved intervals in candidate tracks — not proof of intentional disabling.
+          </p>
+          {anomalies.slice(0, 3).map((a, i) => (
+            <div key={i} className="border-t border-border/50 py-1.5 text-xs">
+              <span className="font-mono">{a.mmsi}</span> · {a.durationHours} h unobserved ·{" "}
+              {a.label}
+            </div>
+          ))}
+          {anomalies.length > 3 && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              + {anomalies.length - 3} more — see AIS tab for full list.
+            </p>
+          )}
+        </Panel>
       )}
     </div>
   );

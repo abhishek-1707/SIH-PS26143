@@ -7,7 +7,6 @@ import { useIncident } from "../context/IncidentContext";
 import {
   analyzeIncident,
   getIncident,
-  listIncidents,
   listIncidentScenes,
   type IncidentReport,
   type Position,
@@ -372,7 +371,7 @@ export function ReportView({ report }: { report: IncidentReport }) {
           </p>
         </section>
         <section className={panel}>
-          <h3 className="mb-2 font-medium">Characterization & age</h3>
+          <h3 className="mb-2 font-medium">Characterization &amp; age</h3>
           {spill && (
             <p className="text-sm">
               Perimeter: {spill.metrics.perimeterM.toFixed(0)} m<br />
@@ -390,7 +389,7 @@ export function ReportView({ report }: { report: IncidentReport }) {
           </p>
         </section>
         <section className={panel}>
-          <h3 className="mb-2 font-medium">Origin & environment</h3>
+          <h3 className="mb-2 font-medium">Origin &amp; environment</h3>
           {origin ? (
             <>
               <p className="text-sm">
@@ -517,7 +516,9 @@ export function ReportView({ report }: { report: IncidentReport }) {
         </section>
       )}
       <details className={panel}>
-        <summary className="cursor-pointer">Pipeline audit trail, provenance & limitations</summary>
+        <summary className="cursor-pointer">
+          Pipeline audit trail, provenance &amp; limitations
+        </summary>
         <ol className="my-3 flex flex-wrap gap-2">
           {report.stages.map((s, i) => (
             <li className="rounded bg-secondary px-2 py-1 text-xs" key={s}>
@@ -559,6 +560,14 @@ export function ReportView({ report }: { report: IncidentReport }) {
 
 function AnalysisPage() {
   const client = useQueryClient();
+  const {
+    setActiveReport,
+    clearActiveReport,
+    activeReport,
+    activeReportId,
+    history,
+    historyLoading,
+  } = useIncident();
   const [horizon, setHorizon] = useState(24);
   const [sceneId, setSceneId] = useState("demo-arabian-sea");
   const [onDemand, setOnDemand] = useState(false);
@@ -569,30 +578,55 @@ function AnalysisPage() {
     queryFn: listIncidentScenes,
     retry: false,
   });
-  const mode = scenes.data?.find((s) => s.id === sceneId)?.mode ?? "DEMO";
-  const { selectedReportId: id, setSelectedReportId: setId } = useIncident();
+  const mode =
+    sceneId === "upload" ? "UPLOAD" : (scenes.data?.find((s) => s.id === sceneId)?.mode ?? "DEMO");
   const [seconds, setSeconds] = useState(0);
-  const history = useQuery({ queryKey: ["incidents"], queryFn: listIncidents, retry: false });
-  const saved = useQuery({
-    queryKey: ["incident", id],
-    queryFn: () => getIncident(id),
-    enabled: !!id,
+
+  // Track a pending saved-report fetch (for when we select from dropdown by id).
+  const [pendingSavedId, setPendingSavedId] = useState("");
+  const savedFetch = useQuery({
+    queryKey: ["incident", pendingSavedId],
+    queryFn: () => getIncident(pendingSavedId),
+    enabled: !!pendingSavedId,
     retry: false,
   });
+
+  // When a saved report arrives from the fetch, store it as the active report.
+  useEffect(() => {
+    if (savedFetch.data && savedFetch.data.id === pendingSavedId) {
+      setActiveReport(savedFetch.data);
+      setPendingSavedId(""); // clear after promotion
+    }
+  }, [savedFetch.data, pendingSavedId, setActiveReport]);
+
+  // The saved-reports select value is the activeReportId (or "" if none).
+  // We track a local "selectedSavedValue" to mirror the dropdown accurately.
+  const [savedDropdownValue, setSavedDropdownValue] = useState("");
+  // Sync dropdown when active report changes externally (e.g. after analyze).
+  useEffect(() => {
+    setSavedDropdownValue(activeReportId);
+  }, [activeReportId]);
+
   const analysis = useMutation({
     mutationFn: analyzeIncident,
     onSuccess: (r) => {
       client.setQueryData(["incident", r.id], r);
-      setId(r.id);
+      setActiveReport(r);
       void client.invalidateQueries({ queryKey: ["incidents"] });
     },
   });
+
   useEffect(() => {
     if (!analysis.isPending) return;
     const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(timer);
   }, [analysis.isPending]);
-  const error = analysis.error || saved.error || history.error || scenes.error;
+
+  // Separate errors: mutation/fetch errors are shown distinctly from scene/history load errors.
+  const analysisError = analysis.error;
+  const savedFetchError = savedFetch.isError && pendingSavedId ? savedFetch.error : null;
+  const scenesError = scenes.isError ? scenes.error : null;
+
   return (
     <div className="space-y-5">
       <div>
@@ -603,8 +637,12 @@ function AnalysisPage() {
         </p>
       </div>
       <section className={`${panel} flex flex-wrap items-end gap-4`}>
+        {/* INPUT SCENE — choosing this does NOT load or change the current report */}
         <label className="text-xs">
-          Available scene
+          Input scene
+          <p className="text-[10px] text-muted-foreground mb-1">
+            Choose the SAR / demo scene to analyze
+          </p>
           <select
             value={sceneId}
             onChange={(e) => setSceneId(e.target.value)}
@@ -621,6 +659,7 @@ function AnalysisPage() {
                   REAL · {s.name}
                 </option>
               ))}
+            <option value="upload">UPLOAD · calibrated SAR subset (512×512 GeoTIFF)</option>
           </select>
         </label>
         {mode !== "DEMO" && (
@@ -676,34 +715,54 @@ function AnalysisPage() {
             ))}
           </select>
         </label>
-        <button
-          className={`${button} bg-primary text-primary-foreground`}
-          disabled={analysis.isPending}
-          onClick={() => {
-            setSeconds(0);
-            analysis.mutate(
-              mode === "REAL"
-                ? { mode, sceneId, forecastHours: horizon, hindcastHours, detector, onDemand }
-                : { mode: "DEMO", sceneId, forecastHours: horizon },
-            );
-          }}
-        >
-          {" "}
-          {analysis.isPending ? "Analyzing…" : `Analyze ${mode} pipeline`}{" "}
-        </button>
+        {sceneId !== "upload" && (
+          <button
+            className={`${button} bg-primary text-primary-foreground`}
+            disabled={analysis.isPending}
+            onClick={() => {
+              setSeconds(0);
+              analysis.mutate(
+                mode === "REAL"
+                  ? { mode, sceneId, forecastHours: horizon, hindcastHours, detector, onDemand }
+                  : { mode: "DEMO", sceneId, forecastHours: horizon },
+              );
+            }}
+          >
+            {" "}
+            {analysis.isPending ? "Analyzing…" : `Analyze ${mode} pipeline`}{" "}
+          </button>
+        )}
+
+        {/* OUTPUT REPORT — selecting this loads a previously generated report */}
         <label className="text-xs">
           Saved reports
+          <p className="text-[10px] text-muted-foreground mb-1">
+            Open a previously generated incident report
+          </p>
           <select
             disabled={analysis.isPending}
             className="mt-1 block max-w-xs rounded bg-secondary p-2 text-sm"
-            value={id}
+            value={savedDropdownValue}
             onChange={(e) => {
               analysis.reset();
-              setId(e.target.value);
+              const newId = e.target.value;
+              setSavedDropdownValue(newId);
+              if (!newId) {
+                clearActiveReport();
+                setPendingSavedId("");
+              } else {
+                // Check React Query cache first, else trigger fetch.
+                const cached = client.getQueryData<typeof activeReport>(["incident", newId]);
+                if (cached) {
+                  setActiveReport(cached);
+                } else {
+                  setPendingSavedId(newId);
+                }
+              }
             }}
           >
             <option value="">Select report</option>
-            {history.data?.map((r) => (
+            {history.map((r) => (
               <option value={r.id} key={r.id}>
                 {r.mode ?? "DEMO"} · {r.status} · {r.detectedAt.slice(0, 19)} · {r.id.slice(0, 8)}
               </option>
@@ -720,9 +779,9 @@ function AnalysisPage() {
           after completion; no simulated progress percentages.
         </div>
       )}
-      {error && (
+      {(analysisError || savedFetchError) && (
         <div role="alert" className="rounded border border-red-400 p-3 text-sm">
-          {error.message}
+          {(analysisError || savedFetchError)?.message}
           <p>
             Ensure the backend is running on the configured VITE_API_URL. No mock result has been
             substituted.
@@ -731,24 +790,45 @@ function AnalysisPage() {
             className={button}
             onClick={() => {
               analysis.reset();
-              void history.refetch();
-              void scenes.refetch();
-              if (id) void saved.refetch();
+              setPendingSavedId("");
+              clearActiveReport();
             }}
           >
             Retry loading data
           </button>
         </div>
       )}
-      {saved.isFetching && <p role="status">Loading saved incident…</p>}
-      {!id && !analysis.isPending && (
+      {scenesError && (
+        <div className="rounded border border-yellow-600/40 p-2 text-xs text-yellow-300">
+          Scene list unavailable — backend may be offline. DEMO options remain available above.
+        </div>
+      )}
+      {(savedFetch.isFetching || historyLoading) && !analysis.isPending && (
+        <p role="status">Loading saved incident…</p>
+      )}
+      {sceneId === "upload" && (
+        <SARUpload
+          disabled={analysis.isPending}
+          forecastHours={horizon}
+          hindcastHours={hindcastHours}
+          onSuccess={(r) => {
+            client.setQueryData(["incident", r.id], r);
+            setActiveReport(r);
+            void client.invalidateQueries({ queryKey: ["incidents"] });
+          }}
+        />
+      )}
+      {!activeReport && !analysis.isPending && sceneId !== "upload" && (
         <p className="py-10 text-center text-muted-foreground">
           DEMO is deterministic and uses fictional vessels. REAL uses trusted archived SAR and
           reports partial evidence when matching environmental fields or historical AIS are
           unavailable.
+          <br />
+          Select a scene above and click Analyze, or choose a saved report to view it here and on
+          all tabs.
         </p>
       )}
-      {saved.data && <ReportView key={saved.data.id} report={saved.data} />}
+      {activeReport && <ReportView key={activeReport.id} report={activeReport} />}
     </div>
   );
 }

@@ -1,13 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { fetchSpills } from "../api/spills";
 import { Marker, OceanMap, pathFrom } from "../components/OceanMap";
 import { KeyVal, Panel, Stat, StatusDot } from "../components/ui-kit";
-import { useIncident, validateIncidentSearch } from "../context/IncidentContext";
-import { formatUtc } from "../data/mock";
+import { useIncident } from "../context/IncidentContext";
 
 export const Route = createFileRoute("/backtracking")({
-  validateSearch: validateIncidentSearch,
   head: () => ({
     meta: [
       { title: "Drift Backtracking — Oil Spill Drift Model" },
@@ -23,82 +20,65 @@ export const Route = createFileRoute("/backtracking")({
       },
     ],
   }),
-  loader: async () => {
-    try {
-      return await fetchSpills();
-    } catch {
-      return undefined;
-    }
-  },
   component: BacktrackingPage,
 });
 
+const utc = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
+};
+
 function BacktrackingPage() {
-  const {
-    selectedIncidentId,
-    setSelectedIncidentId,
-    selectedSpill,
-    spills,
-    isLoading,
-    isError,
-    refetch,
-    investigation,
-  } = useIncident();
-  const [hours, setHours] = useState(0);
+  const { activeReport } = useIncident();
+  const [sliderIndex, setSliderIndex] = useState(0);
 
-  const spill = selectedSpill;
-  const hasDrift = Boolean(investigation?.driftPath && investigation.driftPath.length > 0);
-  const hasProbableOrigin = Boolean(investigation?.probableOrigin);
-  const driftPath = hasDrift ? investigation!.driftPath! : [];
-  const probableOrigin = hasProbableOrigin ? investigation!.probableOrigin! : null;
-  const MAX_H = hasDrift ? driftPath[driftPath.length - 1]!.hoursAgo : 0;
-  const idx = hasDrift ? Math.min(Math.round(hours), driftPath.length - 1) : 0;
-  const point = hasDrift ? driftPath[idx]! : null;
-  const visible = hasDrift ? driftPath.slice(0, idx + 1) : [];
-
-  if (isLoading) {
+  if (!activeReport) {
     return (
       <div className="space-y-5">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Drift backtracking</h1>
           <p className="text-sm text-muted-foreground">
-            Reverse Lagrangian advection · surface current 0.34 m/s bearing 246° · 3% wind leeway
-          </p>
-        </div>
-        <Panel className="flex items-center justify-center p-12 text-center">
-          <p className="text-sm text-muted-foreground">Loading spill data...</p>
-        </Panel>
-      </div>
-    );
-  }
-
-  if (isError || !spill) {
-    return (
-      <div className="space-y-5">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Drift backtracking</h1>
-          <p className="text-sm text-muted-foreground">
-            Reverse Lagrangian advection · surface current 0.34 m/s bearing 246° · 3% wind leeway
+            Reverse Lagrangian advection · modeled origin hindcast
           </p>
         </div>
         <Panel className="flex flex-col items-center justify-center p-12 text-center">
-          <p className="text-sm text-muted-foreground">
-            Unable to load spill data. Make sure the backend is running.
+          <p className="text-sm font-medium text-foreground">No active incident analysis</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Run an analysis from{" "}
+            <Link to="/analysis" className="text-primary underline">
+              Analyze Incident
+            </Link>{" "}
+            or open a saved report.
           </p>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            className="mt-4 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            Retry
-          </button>
         </Panel>
       </div>
     );
   }
 
-  const detectedMs = new Date(spill.detectedAt).getTime();
-  const stamp = new Date(detectedMs - hours * 3600_000).toISOString();
+  const report = activeReport;
+  const { origin, backward, outcome, spill } = report;
+  const noSpill = outcome === "NO_SPILL_DETECTED" || outcome === "ANALYSIS_INCONCLUSIVE" || !spill;
+
+  // `backward` is an array of Position (lat, lon, hours, timestamp, uncertaintyKm).
+  // hours < 0 means it's a hindcast step (negative = before image time).
+  // We reverse it so index 0 = image time, last = furthest back.
+  const driftPath = [...(backward ?? [])].reverse();
+  const hasDrift = driftPath.length > 0;
+  const MAX_IDX = hasDrift ? driftPath.length - 1 : 0;
+  const point = hasDrift ? driftPath[Math.min(sliderIndex, MAX_IDX)] : null;
+  const visible = hasDrift ? driftPath.slice(0, sliderIndex + 1) : [];
+
+  // Map center: prefer spill centroid, then origin, then scene bbox center.
+  const mapCenter: [number, number] = spill
+    ? [spill.metrics.centroid.lon, spill.metrics.centroid.lat]
+    : origin
+      ? [origin.lon, origin.lat]
+      : report.scene.bbox
+        ? [
+            (report.scene.bbox[0] + report.scene.bbox[2]) / 2,
+            (report.scene.bbox[1] + report.scene.bbox[3]) / 2,
+          ]
+        : [72.45, 15.25];
 
   return (
     <div className="space-y-5">
@@ -106,53 +86,49 @@ function BacktrackingPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Drift backtracking</h1>
           <p className="text-sm text-muted-foreground">
-            Incident {spill.id} · Reverse Lagrangian advection · surface current 0.34 m/s bearing
-            246° · 3% wind leeway
+            {report.mode} report · Reverse Lagrangian advection · modeled release origin
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {spills && spills.length > 1 && (
-            <div className="flex items-center gap-1" title="Select incident">
-              {spills.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setSelectedIncidentId(s.id)}
-                  className={`rounded px-1.5 py-0.5 text-[10px] font-mono transition-colors ${
-                    s.id === spill.id
-                      ? "border border-[var(--accent-cyan)]/50 bg-[var(--accent-cyan)]/20 text-[var(--accent-cyan)]"
-                      : "border border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {s.id}
-                </button>
-              ))}
-            </div>
-          )}
-          <StatusDot label={`${spill.id} ${spill.status}`} />
-        </div>
+        <StatusDot label={outcome ?? report.status} />
       </div>
+
+      {noSpill && (
+        <div className="rounded border border-amber-400/40 bg-card/70 p-4 text-sm">
+          <strong>{outcome ?? report.status}</strong>
+          <p className="mt-1">
+            {noSpill
+              ? "Drift backtracking is not applicable when no oil spill is detected."
+              : "Backtracking unavailable for this analysis."}
+          </p>
+          {report.outcomeReason && (
+            <p className="mt-1 text-xs text-muted-foreground">{report.outcomeReason}</p>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
         <Panel title="Reverse drift model">
           <OceanMap
             height={470}
-            initialCenter={[spill.location.longitude, spill.location.latitude]}
+            initialCenter={mapCenter}
             legend={
               <div className="space-y-1">
-                <div>
-                  <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-cyan)]" />
-                  Detected slick ({spill.id}, t=0)
-                </div>
-                {hasProbableOrigin && (
+                {hasDrift && (
+                  <div>
+                    <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-cyan)]" />
+                    Detected slick (t=0)
+                  </div>
+                )}
+                {origin && (
                   <div>
                     <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-amber)]" />
-                    Probable origin (t−9h)
+                    Modeled origin
                   </div>
                 )}
               </div>
             }
           >
+            {/* Full drift path (faint) */}
             {hasDrift && (
               <>
                 <path
@@ -163,6 +139,7 @@ function BacktrackingPage() {
                   strokeDasharray="4 6"
                   opacity={0.35}
                 />
+                {/* Active portion up to slider */}
                 <path
                   d={pathFrom(visible.map((p) => [p.lon, p.lat]))}
                   fill="none"
@@ -172,19 +149,25 @@ function BacktrackingPage() {
                 />
               </>
             )}
-            <Marker
-              lon={spill.location.longitude}
-              lat={spill.location.latitude}
-              label={`Detected slick (${spill.id})`}
-            />
-            {probableOrigin && (
+            {/* Image-time slick position */}
+            {spill && (
               <Marker
-                lon={probableOrigin.lon}
-                lat={probableOrigin.lat}
-                color="var(--accent-amber)"
-                label="Probable origin"
+                lon={spill.metrics.centroid.lon}
+                lat={spill.metrics.centroid.lat}
+                label="Detected slick (t=0)"
+                pulse
               />
             )}
+            {/* Modeled origin */}
+            {origin && (
+              <Marker
+                lon={origin.lon}
+                lat={origin.lat}
+                color="var(--accent-amber)"
+                label="Modeled origin"
+              />
+            )}
+            {/* Slider point */}
             {point && (
               <Marker lon={point.lon} lat={point.lat} color="var(--accent-blue)" pulse active />
             )}
@@ -197,49 +180,60 @@ function BacktrackingPage() {
                   Backtrack time
                 </span>
                 <span className="tabular-nums text-foreground">
-                  t − {hours.toFixed(0)} h · {formatUtc(stamp)}
+                  {point
+                    ? `t ${point.hours.toFixed(0)}h · ${utc(point.timestamp)}`
+                    : "t = 0 (image time)"}
                 </span>
               </div>
               <input
                 type="range"
                 className="om-range mt-3"
                 min={0}
-                max={MAX_H}
+                max={MAX_IDX}
                 step={1}
-                value={hours}
+                value={sliderIndex}
                 aria-label="Backtrack time in hours"
-                style={{ ["--fill" as string]: `${(hours / (MAX_H || 1)) * 100}%` }}
-                onChange={(e) => setHours(Number(e.target.value))}
+                style={{ ["--fill" as string]: `${(sliderIndex / (MAX_IDX || 1)) * 100}%` }}
+                onChange={(e) => setSliderIndex(Number(e.target.value))}
               />
               <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-                <span>t − 0 h (detection)</span>
-                <span>t − {MAX_H} h (origin)</span>
+                <span>t = 0 (image time)</span>
+                {driftPath[MAX_IDX] && (
+                  <span>t {driftPath[MAX_IDX].hours.toFixed(0)}h (modeled origin)</span>
+                )}
               </div>
               <div className="mt-3 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setHours(0)}
+                  onClick={() => setSliderIndex(0)}
                   className="rounded-md border border-border px-3 py-1.5 text-[11px] transition-colors hover:border-primary/60 hover:text-primary"
                 >
                   Jump to detection
                 </button>
                 <button
                   type="button"
-                  onClick={() => setHours(MAX_H)}
+                  onClick={() => setSliderIndex(MAX_IDX)}
                   className="rounded-md border border-border px-3 py-1.5 text-[11px] transition-colors hover:border-primary/60 hover:text-primary"
                 >
                   Jump to origin
                 </button>
               </div>
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                Sensitivity radius ±{point?.uncertaintyKm ?? "—"} km at selected time. Modeled
+                trajectory — not a navigational track.
+              </p>
             </div>
           ) : (
             <div className="mt-5 rounded-md border border-border bg-secondary/30 p-4 text-center">
               <div className="text-sm font-medium text-foreground">
-                Investigation data unavailable
+                {noSpill
+                  ? "Drift backtracking not applicable"
+                  : "Backtracked trajectory unavailable"}
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Reverse Lagrangian drift backtracking has not been computed for incident {spill.id}.
-                Select SP-001 to review demonstration drift model.
+                {noSpill
+                  ? "No oil spill was detected in this scene — drift backtracking was not computed."
+                  : "The hindcast drift path was not computed for this report. Run a DEMO or REAL analysis to generate a drift trajectory."}
               </p>
             </div>
           )}
@@ -250,30 +244,46 @@ function BacktrackingPage() {
             {point ? (
               <>
                 <div className="grid grid-cols-2 gap-4">
-                  <Stat label="Latitude" value={point.lat.toFixed(3)} />
-                  <Stat label="Longitude" value={point.lon.toFixed(3)} />
+                  <Stat label="Latitude" value={point.lat.toFixed(4)} />
+                  <Stat label="Longitude" value={point.lon.toFixed(4)} />
+                  <Stat label="Hours back" value={Math.abs(point.hours).toFixed(0)} />
+                  <Stat label="Sensitivity" value={`±${point.uncertaintyKm} km`} />
                 </div>
-                <p className="mt-3 text-[12px] text-muted-foreground">{point.label}</p>
+                <p className="mt-3 text-[12px] text-muted-foreground">{utc(point.timestamp)}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Sensitivity ±{point.uncertaintyKm} km is a modeled range, not a calibrated
+                  uncertainty.
+                </p>
               </>
             ) : (
               <div className="py-4 text-center text-xs text-muted-foreground">
-                No backtracked trajectory points for {spill.id}.
+                {noSpill
+                  ? "No drift trajectory — no spill detected."
+                  : "No backtracked trajectory available."}
               </div>
             )}
           </Panel>
 
-          <Panel title="Probable origin">
-            {probableOrigin ? (
+          <Panel title="Modeled origin">
+            {origin ? (
               <>
-                <KeyVal k="Position" v={`${probableOrigin.lat}, ${probableOrigin.lon}`} />
-                <KeyVal k="Radius" v={`${probableOrigin.radiusKm} km`} />
-                <KeyVal k="Window start" v={formatUtc(probableOrigin.windowStart)} />
-                <KeyVal k="Window end" v={formatUtc(probableOrigin.windowEnd)} />
-                <KeyVal k="Model steps" v={`${driftPath.length} hourly`} />
+                <KeyVal
+                  k="Position"
+                  v={`${origin.lat.toFixed(5)}° N, ${origin.lon.toFixed(5)}° E`}
+                />
+                <KeyVal k="Sensitivity radius" v={`${origin.uncertaintyKm} km`} />
+                <KeyVal k="Window start" v={utc(origin.releaseWindow.start)} />
+                <KeyVal k="Window end" v={utc(origin.releaseWindow.end)} />
+                <KeyVal k="Hindcast steps" v={`${driftPath.length} hourly`} />
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Release window is an analyst-selected hindcast scenario. Not a measured spill age.
+                </p>
               </>
             ) : (
               <div className="py-4 text-center text-xs text-muted-foreground">
-                Origin release cell has not been estimated for {spill.id}.
+                {noSpill
+                  ? "Origin not modeled — no spill detected."
+                  : "Origin release cell has not been estimated for this report."}
               </div>
             )}
           </Panel>

@@ -61,6 +61,7 @@ export interface IncidentSummary {
   acquiredAt: string;
   detectedAt: string;
   status: string;
+  outcome?: AnalysisOutcome;
   forecastHours: number;
 }
 export interface IncidentReport {

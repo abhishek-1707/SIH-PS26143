@@ -1,268 +1,153 @@
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  type ReactNode,
-} from "react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
-import {
-  useSpills,
-  useSpillInvestigation,
-  type Spill,
-  type CandidateVessel,
-  type AttributionScore,
-} from "../api/spills";
-import {
-  getIncidentInvestigation,
-  spillPolygon,
-  type IncidentInvestigationData,
-  type ProbableOrigin,
-  type Vessel,
-  type Suspect,
-} from "../data/mock";
+  getIncident,
+  listIncidents,
+  type IncidentReport,
+  type IncidentSummary,
+} from "../api/incidents";
 
-const STORAGE_KEY = "osis_selected_incident";
-export const DEFAULT_INCIDENT_ID = "SP-001";
+export interface IncidentContextType {
+  /** The fully-loaded active report, or null if none selected. */
+  activeReport: IncidentReport | null;
+  /** Convenience: id of the active report ("" when none). */
+  activeReportId: string;
+  /**
+   * Store a freshly-received IncidentReport as the active report.
+   * Also seeds React Query cache so subsequent fetches hit the cache.
+   */
+  setActiveReport: (report: IncidentReport) => void;
+  /**
+   * Select a report by its UUID.  The full report is fetched from the API
+   * (or resolved from the React Query cache) and then stored as the active report.
+   */
+  setActiveReportId: (id: string) => void;
+  /** Clear the active report – shows the empty state on all pages. */
+  clearActiveReport: () => void;
 
-interface IncidentContextType {
-  // Computed reports use their own UUID selection; never resolve through legacy mock fixtures.
-  selectedReportId: string;
-  setSelectedReportId: (id: string) => void;
-  selectedIncidentId: string;
-  setSelectedIncidentId: (id: string) => void;
-  selectedSpill: Spill | undefined;
-  spills: Spill[] | undefined;
-  isLoading: boolean;
-  isError: boolean;
-  refetch: () => void;
-  investigation: IncidentInvestigationData | undefined;
-  isInvestigationLoading: boolean;
-  isInvestigationError: boolean;
+  /** History list from GET /api/incidents. */
+  history: IncidentSummary[];
+  historyLoading: boolean;
+  historyError: Error | null;
+  refetchHistory: () => void;
 }
 
 const IncidentContext = createContext<IncidentContextType | null>(null);
 
-function getInitialIncidentId(): string {
-  if (typeof window !== "undefined") {
-    try {
-      const urlParam = new URLSearchParams(window.location.search).get("incident");
-      if (urlParam) return urlParam;
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) return stored;
-    } catch {
-      // ignore storage/search parse failures
-    }
-  }
-  return DEFAULT_INCIDENT_ID;
-}
-
-export interface IncidentSearch {
-  incident?: string;
-}
-
-export function validateIncidentSearch(search: Record<string, unknown>): IncidentSearch {
-  const incident = typeof search["incident"] === "string" ? search["incident"] : undefined;
-  return incident ? { incident } : {};
-}
-
 export function IncidentProvider({ children }: { children: ReactNode }) {
-  const [selectedReportId, setSelectedReportId] = useState("");
-  const location = useLocation();
-  const searchIncident = (location.search as Record<string, unknown>)?.["incident"] as
-    string | undefined;
+  const queryClient = useQueryClient();
+  const [activeReport, setActiveReportState] = useState<IncidentReport | null>(null);
+  // Track which report ID is "pending" when we want to load by ID.
+  const [pendingId, setPendingId] = useState<string>("");
 
-  const [selectedIncidentId, setSelectedIncidentIdState] = useState<string>(() => {
-    if (searchIncident) return searchIncident;
-    if (typeof window !== "undefined") {
-      try {
-        const urlParam = new URLSearchParams(window.location.search).get("incident");
-        if (urlParam) return urlParam;
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) return stored;
-      } catch {
-        // ignore storage/search parse failures
-      }
-    }
-    return DEFAULT_INCIDENT_ID;
+  // Fetch the history list.
+  const {
+    data: historyData,
+    isLoading: historyLoading,
+    error: historyError,
+    refetch: refetchHistory,
+  } = useQuery<IncidentSummary[], Error>({
+    queryKey: ["incidents"],
+    queryFn: listIncidents,
+    staleTime: 30_000,
+    retry: false,
   });
 
-  const navigate = useNavigate();
-  const { data: spills, isLoading, isError, refetch } = useSpills();
-  const {
-    data: dbInvestigation,
-    isLoading: isInvestigationLoading,
-    isError: isInvestigationError,
-    refetch: refetchInvestigation,
-  } = useSpillInvestigation(selectedIncidentId);
+  // When a report ID is pending (from setActiveReportId), fetch it.
+  const { data: fetchedReport } = useQuery<IncidentReport>({
+    queryKey: ["incident", pendingId],
+    queryFn: () => getIncident(pendingId),
+    enabled: !!pendingId,
+    staleTime: 60_000,
+    retry: false,
+  });
 
-  // Keep state in sync with URL search parameter whenever location.search changes
-  useEffect(() => {
-    let incidentInUrl: string | null = null;
-    if (location.search && typeof location.search === "object") {
-      incidentInUrl = ((location.search as Record<string, unknown>)["incident"] as string) || null;
+  // When the fetched report arrives, promote it to the active report.
+  // (This effect runs whenever fetchedReport changes and pendingId matches.)
+  // We do this with a useMemo-style derivation: if fetchedReport is for the
+  // current pendingId and is not already the active report, update.
+  const resolvedReport = useMemo(() => {
+    if (fetchedReport && pendingId && fetchedReport.id === pendingId) {
+      return fetchedReport;
     }
-    if (!incidentInUrl && typeof window !== "undefined") {
-      incidentInUrl = new URLSearchParams(window.location.search).get("incident");
-    }
+    return null;
+  }, [fetchedReport, pendingId]);
 
-    if (incidentInUrl && incidentInUrl !== selectedIncidentId) {
-      setSelectedIncidentIdState(incidentInUrl);
-      try {
-        localStorage.setItem(STORAGE_KEY, incidentInUrl);
-      } catch {
-        // ignore
-      }
-    }
-  }, [location.search, selectedIncidentId]);
+  // Merge: if we have a resolved report from the fetch and it differs from activeReport, use it.
+  const effectiveReport = resolvedReport ?? activeReport;
+  // If pendingId matches the effectiveReport, clear the pending flag conceptually.
+  // We track this so state doesn't bounce.
+  const displayReport =
+    pendingId && effectiveReport && effectiveReport.id === pendingId
+      ? effectiveReport
+      : pendingId
+        ? null // still loading
+        : activeReport;
 
-  const setSelectedIncidentId = useCallback(
-    (id: string) => {
-      setSelectedIncidentIdState(id);
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem(STORAGE_KEY, id);
-        } catch {
-          // ignore
-        }
-      }
-      void navigate({
-        from: "/",
-        to: ".",
-        search: (prev) => ({
-          ...(typeof prev === "object" && prev ? prev : {}),
-          incident: id,
-        }),
-        replace: true,
-      });
+  const setActiveReport = useCallback(
+    (report: IncidentReport) => {
+      // Seed cache so a subsequent setActiveReportId for this id is instant.
+      queryClient.setQueryData(["incident", report.id], report);
+      setActiveReportState(report);
+      setPendingId(""); // clear pending
     },
-    [navigate],
+    [queryClient],
   );
 
-  // Derive active spill from backend data, defaulting to SP-001
-  const selectedSpill = useMemo(() => {
-    if (!spills || spills.length === 0) return undefined;
-    const base =
-      spills.find((s) => s.id === selectedIncidentId) ??
-      spills.find((s) => s.id === DEFAULT_INCIDENT_ID) ??
-      spills.find((s) => s.status === "active") ??
-      spills[0];
-    if (!base) return undefined;
-    if (dbInvestigation?.spill && dbInvestigation.spill.id === base.id) {
-      return { ...base, ...dbInvestigation.spill };
-    }
-    return base;
-  }, [spills, selectedIncidentId, dbInvestigation]);
+  const setActiveReportId = useCallback(
+    (id: string) => {
+      if (!id) return;
+      // Try to resolve from cache immediately.
+      const cached = queryClient.getQueryData<IncidentReport>(["incident", id]);
+      if (cached) {
+        setActiveReportState(cached);
+        setPendingId("");
+      } else {
+        setActiveReportState(null); // clear stale report while loading
+        setPendingId(id);
+      }
+    },
+    [queryClient],
+  );
 
-  // If backend loads and has an active spill that matches the default or selection,
-  // ensure selectedIncidentId is kept aligned
-  useEffect(() => {
-    if (selectedSpill && selectedSpill.id !== selectedIncidentId && !selectedIncidentId) {
-      setSelectedIncidentIdState(selectedSpill.id);
-    }
-  }, [selectedSpill, selectedIncidentId]);
+  const clearActiveReport = useCallback(() => {
+    setActiveReportState(null);
+    setPendingId("");
+  }, []);
 
-  const investigation = useMemo<IncidentInvestigationData | undefined>(() => {
-    if (dbInvestigation) {
-      const origin: ProbableOrigin | undefined = dbInvestigation.origin
-        ? {
-            lat: dbInvestigation.origin.latitude,
-            lon: dbInvestigation.origin.longitude,
-            windowStart: dbInvestigation.origin.releaseWindow?.start || "",
-            windowEnd: dbInvestigation.origin.releaseWindow?.end || "",
-            radiusKm: dbInvestigation.origin.uncertaintyKm || 3.2,
-          }
-        : undefined;
-
-      const polygon =
-        dbInvestigation.spill?.polygon && dbInvestigation.spill.polygon.length > 0
-          ? dbInvestigation.spill.polygon
-          : selectedIncidentId === "SP-001"
-            ? spillPolygon
-            : undefined;
-
-      const drift =
-        dbInvestigation.driftPath && dbInvestigation.driftPath.length > 0
-          ? dbInvestigation.driftPath
-          : undefined;
-
-      const vList: Vessel[] | undefined =
-        dbInvestigation.vessels && dbInvestigation.vessels.length > 0
-          ? dbInvestigation.vessels.map((v: CandidateVessel) => ({
-              id: v.id,
-              name: v.name,
-              mmsi: v.mmsi,
-              type: v.type,
-              flag: v.flag,
-              speedKn: v.speedKn,
-              headingDeg: v.headingDeg,
-              lastSeen: v.lastSeen,
-              aisGapMin: v.aisGapMin,
-              track: v.track,
-            }))
-          : undefined;
-
-      const sList: Suspect[] | undefined =
-        dbInvestigation.attribution && dbInvestigation.attribution.length > 0
-          ? dbInvestigation.attribution.map((a: AttributionScore) => ({
-              vesselId: a.vesselId,
-              rank: a.rank,
-              suspicion: a.suspicion,
-              proximity: a.proximity,
-              temporal: a.temporal,
-              aisGap: a.aisGap,
-              vesselType: a.vesselType,
-              summary: a.summary,
-            }))
-          : undefined;
-
-      return {
-        spillId: dbInvestigation.id || selectedIncidentId,
-        spillPolygon: polygon,
-        driftPath: drift,
-        probableOrigin: origin,
-        vessels: vList,
-        suspects: sList,
-      };
-    }
-
-    // Fallback to mock investigation dataset only if API data hasn't loaded
-    return getIncidentInvestigation(selectedIncidentId);
-  }, [dbInvestigation, selectedIncidentId]);
+  // When the pending query resolves, promote to activeReport.
+  // We do this by detecting when displayReport has loaded.
+  // To avoid an infinite loop we track if we already promoted.
+  // Instead, we derive it: if pendingId is set and fetchedReport matches, call setActiveReport.
+  // We use a ref-less approach: check in the render phase via useMemo side-effect avoidance.
+  // The cleanest approach: treat displayReport as the union:
+  const finalReport: IncidentReport | null = (() => {
+    if (!pendingId) return activeReport;
+    if (fetchedReport && fetchedReport.id === pendingId) return fetchedReport;
+    return null; // still loading
+  })();
 
   const value = useMemo<IncidentContextType>(
     () => ({
-      selectedReportId,
-      setSelectedReportId,
-      selectedIncidentId,
-      setSelectedIncidentId,
-      selectedSpill,
-      spills,
-      isLoading,
-      isError,
-      refetch: () => {
-        refetch();
-        refetchInvestigation();
-      },
-      investigation,
-      isInvestigationLoading,
-      isInvestigationError,
+      activeReport: finalReport,
+      activeReportId: finalReport?.id ?? "",
+      setActiveReport,
+      setActiveReportId,
+      clearActiveReport,
+      history: historyData ?? [],
+      historyLoading,
+      historyError: historyError ?? null,
+      refetchHistory: () => void refetchHistory(),
     }),
     [
-      selectedReportId,
-      selectedIncidentId,
-      setSelectedIncidentId,
-      selectedSpill,
-      spills,
-      isLoading,
-      isError,
-      refetch,
-      refetchInvestigation,
-      investigation,
-      isInvestigationLoading,
-      isInvestigationError,
+      finalReport,
+      setActiveReport,
+      setActiveReportId,
+      clearActiveReport,
+      historyData,
+      historyLoading,
+      historyError,
+      refetchHistory,
     ],
   );
 

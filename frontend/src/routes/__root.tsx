@@ -11,7 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { IncidentProvider, useIncident } from "../context/IncidentContext";
+import { IncidentProvider } from "../context/IncidentContext";
 
 const NAV = [
   { to: "/analysis", label: "Analyze incident" },
@@ -70,8 +70,6 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  validateSearch: (search: Record<string, unknown>): { incident?: string } =>
-    typeof search["incident"] === "string" ? { incident: search["incident"] } : {},
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -123,8 +121,6 @@ function RootComponent() {
 }
 
 function RootLayout() {
-  const { selectedIncidentId } = useIncident();
-
   return (
     <>
       <div className="om-stars" aria-hidden="true" />
@@ -144,7 +140,6 @@ function RootLayout() {
                 <Link
                   key={n.to}
                   to={n.to}
-                  search={{ incident: selectedIncidentId }}
                   activeOptions={{ exact: n.to === "/" }}
                   className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground data-[status=active]:bg-secondary data-[status=active]:text-foreground"
                 >
@@ -155,20 +150,12 @@ function RootLayout() {
           </div>
         </header>
         <main className="mx-auto max-w-7xl px-5 py-6">
-          <div className="mb-4 rounded border border-primary/30 bg-card/70 p-3 text-xs">
-            <Link to="/analysis" className="font-semibold text-primary">
-              Open the end-to-end O.S.I.S. analysis →
-            </Link>
-            <span className="ml-2 text-muted-foreground">
-              The other tabs preserve the legacy demonstration views; their fixture values are not
-              this incident report.
-            </span>
-          </div>
           <Outlet />
         </main>
         <footer className="mx-auto max-w-7xl px-5 pb-8 text-[11px] text-muted-foreground">
           Research console · DEMO is synthetic · REAL reports label source inputs, inferred
-          candidates, modeled scenarios and unavailable evidence · all outputs are analytical, not legal proof
+          candidates, modeled scenarios and unavailable evidence · all outputs are analytical, not
+          legal proof
         </footer>
       </div>
     </>
