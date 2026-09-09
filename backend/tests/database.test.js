@@ -17,6 +17,9 @@ test('PostGIS migration is repeatable and incident evidence round-trips', {
         const migration = await fs.readFile(path.resolve(__dirname, '../migrations/002_incidents.sql'), 'utf8');
         await client.query(migration);
         await client.query(migration);
+        const outcomes = await fs.readFile(path.resolve(__dirname, '../migrations/003_analysis_outcomes.sql'), 'utf8');
+        await client.query(outcomes);
+        await client.query(outcomes);
         const report = JSON.parse(execFileSync(process.env.PYTHON_PATH || 'python',
             [path.resolve(__dirname, '../scripts/incident_pipeline.py')],
             { input: '{"forecastHours":48}', encoding: 'utf8', timeout: 60000 }));
@@ -38,6 +41,17 @@ test('PostGIS migration is repeatable and incident evidence round-trips', {
         }
         const fixes = await client.query('SELECT * FROM osis_ais_positions WHERE incident_id=$1', [id]);
         assert.ok(fixes.rowCount > 50);
+        for (const sceneId of ['demo-no-spill', 'demo-inconclusive']) {
+            const empty = JSON.parse(execFileSync(process.env.PYTHON_PATH || 'python',
+                [path.resolve(__dirname, '../scripts/incident_pipeline.py')],
+                { input: JSON.stringify({ sceneId }), encoding: 'utf8', timeout: 60000 }));
+            const emptyId = randomUUID();
+            await client.query('INSERT INTO osis_incidents(id,detected_at,image_at,spill_geom,origin_geom,report) VALUES ($1,now(),NULL,NULL,NULL,$2::jsonb)', [emptyId, JSON.stringify(empty)]);
+            const saved = await client.query('SELECT report,spill_geom,origin_geom FROM osis_incidents WHERE id=$1', [emptyId]);
+            assert.deepEqual(saved.rows[0].report, empty);
+            assert.equal(saved.rows[0].spill_geom, null);
+            assert.equal(saved.rows[0].origin_geom, null);
+        }
         console.log('PostGIS geometry, JSONB evidence, relational views and repeatable migration verified');
     } finally {
         if (client) {

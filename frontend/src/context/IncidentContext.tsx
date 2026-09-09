@@ -28,6 +28,9 @@ const STORAGE_KEY = "osis_selected_incident";
 export const DEFAULT_INCIDENT_ID = "SP-001";
 
 interface IncidentContextType {
+  // Computed reports use their own UUID selection; never resolve through legacy mock fixtures.
+  selectedReportId: string;
+  setSelectedReportId: (id: string) => void;
   selectedIncidentId: string;
   setSelectedIncidentId: (id: string) => void;
   selectedSpill: Spill | undefined;
@@ -66,6 +69,7 @@ export function validateIncidentSearch(search: Record<string, unknown>): Inciden
 }
 
 export function IncidentProvider({ children }: { children: ReactNode }) {
+  const [selectedReportId, setSelectedReportId] = useState("");
   const location = useLocation();
   const searchIncident = (location.search as Record<string, unknown>)?.["incident"] as
     string | undefined;
@@ -230,6 +234,8 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<IncidentContextType>(
     () => ({
+      selectedReportId,
+      setSelectedReportId,
       selectedIncidentId,
       setSelectedIncidentId,
       selectedSpill,
@@ -245,6 +251,7 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
       isInvestigationError,
     }),
     [
+      selectedReportId,
       selectedIncidentId,
       setSelectedIncidentId,
       selectedSpill,

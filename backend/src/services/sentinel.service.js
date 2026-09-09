@@ -1,4 +1,14 @@
 const path = require('path');
+const fetch = require('./bounded-fetch');
+const limits = require('./resource-limits');
+function validateSubset(bbox, from, to) {
+  if (!Array.isArray(bbox) || bbox.length !== 4 || !bbox.every(Number.isFinite) ||
+      !(bbox[0] >= -180 && bbox[2] <= 180 && bbox[1] > -85 && bbox[3] < 85 &&
+        bbox[2] > bbox[0] && bbox[3] > bbox[1] && bbox[2] - bbox[0] <= limits.maxAoiDegrees && bbox[3] - bbox[1] <= limits.maxAoiDegrees))
+    throw new Error('AOI must be at most 0.2 degrees per side within supported latitudes');
+  const duration = Date.parse(to) - Date.parse(from);
+  if (!Number.isFinite(duration) || duration < 0 || duration > 86400000) throw new Error('Search interval must be at most 24 hours');
+}
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 require('dotenv').config();
 
@@ -42,18 +52,7 @@ async function getAccessToken() {
       'Accept': 'application/json',
     },
     body: params.toString(),
-  });
-
-  if (!response.ok) {
-    let errorDetails = '';
-    try {
-      const errJson = await response.json();
-      errorDetails = errJson.error_description || errJson.error || JSON.stringify(errJson);
-    } catch {
-      errorDetails = await response.text();
-    }
-    throw new Error(`CDSE Authentication Failed (${response.status} ${response.statusText}): ${errorDetails}`);
-  }
+  }, 64 * 1024);
 
   const data = await response.json();
   if (!data.access_token) {
@@ -81,6 +80,9 @@ async function searchCatalog({
   limit = 5,
   collections = ['sentinel-1-grd'],
 }) {
+  const [from, to] = String(datetime).split('/');
+  validateSubset(bbox, from, to);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 5) throw new Error('Catalog scene limit is 5');
   const token = await getAccessToken();
 
   const payload = {
@@ -99,17 +101,6 @@ async function searchCatalog({
     },
     body: JSON.stringify(payload),
   });
-
-  if (!response.ok) {
-    let errorDetails = '';
-    try {
-      const errJson = await response.json();
-      errorDetails = JSON.stringify(errJson, null, 2);
-    } catch {
-      errorDetails = await response.text();
-    }
-    throw new Error(`CDSE Catalog Search Failed (${response.status} ${response.statusText}): ${errorDetails}`);
-  }
 
   const result = await response.json();
   return result;
@@ -134,6 +125,8 @@ async function getSentinel1GrdImage({
   height = 512,
   polarization = 'VV',
 }) {
+  validateSubset(bbox, from, to);
+  if (width !== 512 || height !== 512 || !['VV', 'VH'].includes(polarization)) throw new Error('Only 512x512 VV/VH SAR subsets are supported');
   const token = await getAccessToken();
 
   const evalscript = `//VERSION=3
@@ -191,17 +184,6 @@ function evaluatePixel(samples) {
     },
     body: JSON.stringify(payload),
   });
-
-  if (!response.ok) {
-    let errorDetails = '';
-    try {
-      const errJson = await response.json();
-      errorDetails = JSON.stringify(errJson, null, 2);
-    } catch {
-      errorDetails = await response.text();
-    }
-    throw new Error(`CDSE Process API Failed (${response.status} ${response.statusText}): ${errorDetails}`);
-  }
 
   const arrayBuf = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuf);

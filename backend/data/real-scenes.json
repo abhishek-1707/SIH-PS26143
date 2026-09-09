@@ -1,0 +1,15 @@
+[
+  {
+    "id": "s1a-20240619-karnataka",
+    "name": "Sentinel-1A · Karnataka · 19 June 2024 (archived)",
+    "mode": "REAL",
+    "source": "archived_sentinel1",
+    "productId": "S1A_IW_GRDH_1SDV_20240619T004837_20240619T004902_054385_069DE8_E3DA_COG.SAFE",
+    "acquiredAt": "2024-06-19T00:48:37Z",
+    "bbox": [74.7, 13.2, 74.78, 13.28],
+    "rasterUnits": "db",
+    "polarization": ["VV", "VH"],
+    "vv": "sentinel-test/s1a_20240619_vv_db.tif",
+    "vh": "sentinel-test/s1a_20240619_vh_db.tif"
+  }
+]

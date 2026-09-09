@@ -30,6 +30,9 @@ app.use((err, req, res, next) => {
   const status = Number.isInteger(err.status) && err.status >= 400 && err.status <= 599 ? err.status : 500;
   console.error(`[api] request failed (${status})`);
   res.status(status).json({
+    outcome: 'ANALYSIS_INCONCLUSIVE',
+    availability: 'PROCESSING_ERROR',
+    recovery: 'Review the supported input and resource limits, then retry. No synthetic result was substituted.',
     error: status < 500 || status === 503 || status === 504
       ? err.message : 'Internal Server Error'
   });

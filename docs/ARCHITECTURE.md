@@ -1,8 +1,56 @@
 # O.S.I.S. technical architecture and engineering record
 
+## Current prototype upgrade (2026-09-09)
+
+The following contract supersedes older two-mode/complete-only descriptions in the historical design record below. See [README](../README.md) for current setup/API/resource variables and [validation record](VALIDATION.md) for measured acceptance results.
+
+### Pre-change audit
+
+Audited Express routes/services, React/TanStack routes/context/SVG map, both incident pipelines, PostGIS schema/views, SAR preprocessing, classical/hybrid/PoSeATSea evaluation artifacts, metric characterization, RK4/environment providers, local files and read-only AIS database inventory, Python/Node/browser tests and documentation before editing. Baseline backend/default frontend tests passed. Gaps were explicit outcomes, input uploads, bounded on-demand provider access, nullable PostGIS evidence and no-spill/error acceptance—not the scientific integrator or DEMO scoring.
+
+Local AIS inventory was independently verified as 24 fixes from five MMSIs dated September 3–4, 2026. The repository CSVs are three detector-evaluation summaries, not historical AIS; no usable local environmental NetCDF subsets were found. None of that AIS is used for the June 2024 scene. Existing 110 MB checkpoint files and GeoTIFFs are reused locally and remain ignored, not added to Git.
+
+### Data flow and contracts
+
+```text
+DEMO registry (spill / no-spill / inconclusive)
+REAL trusted archived registry OR explicit on-demand CDSE request
+UPLOAD bounded VV+VH GeoTIFF byte stream + declared metadata
+  -> Express validation, admission/size guards
+  -> trusted scene/path adapter (no client paths or URLs)
+  -> existing Python detector/preprocessing
+  -> report_contract.finalize -> exactly one outcome
+       SPILL_DETECTED | NO_SPILL_DETECTED | ANALYSIS_INCONCLUSIVE
+  -> valid positive evidence: characterization -> strict environment -> RK4
+       independent hindcast/forecast -> observed historical AIS -> compatibility/gaps
+  -> JSON archive, optional PostGIS mirror -> typed React report + footprint + diagnostics
+```
+
+`outcome` is distinct from evidence `status` (`completed`, `partial`, `no_candidates`). A positive detection can have unavailable age/environment/AIS. Inconclusive detections retain candidate masks/geometry but do not trigger new attribution. `availability: REAL_DATA_UNAVAILABLE` identifies absent provider/dependency access without introducing a fourth detection outcome. Invalid API/oversized transport errors use structured inconclusive error envelopes; accepted invalid uploads are durable inconclusive reports.
+
+`backend/scripts/report_contract.py` supplies version 2.0, three outcomes, footprint, limitations and per-field evidence categories: OBSERVED, MODELED, INFERRED, DEMO/SYNTHETIC, UNAVAILABLE. User SAR acquisition/source is declared, not authenticated. Reanalysis is MODELED; age remains unavailable for a single real observation; the six-hour default origin time is explicitly a scenario. Existing DEMO calculations/rank ordering are unchanged.
+
+`backend/src/services/sar-input.service.js` adapts the existing Sentinel service and strict Python SAR contract. No new framework/parser/model was installed. Uploads are two 512×512 single-band FLOAT32 EPSG:4326 GeoTIFFs. TIFF tags/shape/dtype/georeferencing/coverage are checked before inference; display photographs are unsupported. The existing hybrid detector remains the default because the recorded six-scene comparison showed a coastal standalone PoSeATSea miss recovered by fusion; this small bounding-box benchmark is not operational accuracy validation. Conservative coverage/texture/confidence gates are explicit prototype policy; classical-only dark regions cannot establish oil.
+
+`bounded-fetch.js` limits body bytes while streaming and keeps request timeout active through body completion. CDSE uses metadata-first selection and two sequential server-cropped polarization subsets, not SAFE archive downloads. Trusted AOI ≤0.2° per side, ≤5 catalog records, one acquisition, ≤8 MiB/response, zero auto retries, 60-second cooldown, one-hour single-scene cache. Python remains two concurrent bounded processes with fixed native raster size/two torch CPU threads. Upload temporary files are deleted in finally. Report count is capped rather than silently deleting evidence; expired adapter-owned CDSE caches are cleaned, including after previous abnormal exits.
+
+Migration 003 allows null spill/origin/image time, checks outcomes and adds a correctly named compatibility-score view without breaking legacy consumers. Local JSON remains the read archive; missing migration/database yields an explicit local-fallback persistence label. Tests run migrations and empty-evidence round-trips in a rolled-back transaction.
+
+### Frontend and acceptance
+
+The existing `/analysis` selection/report context remains independent of legacy fixture IDs. Report-ID keys reset raster/layers/candidate/map state. No-spill reports retain detector, timestamp, preview and footprint; inconclusive reports retain diagnostics and known footprint. Invalid uploads without georeferencing explicitly label the contextual map as not an analyzed area. Upload transfer/processing, API/network errors and retry controls are visible. Other research routes retain their existing fixture banners and loading/error views.
+
+The original mocked-browser regression remains for fast report/layer switching, now including no-spill/inconclusive/network/upload validation. `frontend/tests/live-analysis.test.mjs` separately starts real Vite + Express + Python and drives installed Chrome through its built-in debugging protocol. It does not download a browser or satellite products. It exposed a real development hydration failure: React Store's named import from the CommonJS `use-sync-external-store` shim. Explicitly prebundling the existing shim in Vite fixes the inert SSR-only page; no dependency replacement was required. This distinction is retained in the validation record; neither automated test is a substitute for operational scientific calibration or broad visual/device acceptance.
+
+### Remaining external boundaries
+
+Matching licensed historical AIS, CMEMS/ERA5 trajectory coverage, authorized CDSE access, verified oil ground truth and age observations cannot be manufactured in code. The implemented adapters fail closed and preserve DEMO/UPLOAD. Authentication, distributed job queues/storage, calibrated uncertainty, weathering/coastal physics and wholly unobserved vessels remain outside this laptop SIH prototype.
+
 ## Scope
 
-The repository now has a credential-free, backend-computed incident workflow at `/analysis`, alongside the preserved research and legacy incident workflows. This is an SIH prototype, not an operational surveillance service. The new exercise is explicitly synthetic; modeled origins and heuristic rankings are not observations or legal findings.
+The repository now has a backend-computed incident workflow at `/analysis`, alongside the preserved research and legacy incident workflows. DEMO is a credential-free, deterministic synthetic exercise; REAL uses trusted archived SAR and strict local environment/AIS adapters with explicit partial reports when evidence is unavailable. This is an SIH prototype, not an operational surveillance service. Modeled origins and heuristic rankings are not observations or legal findings.
+
+The DEMO design and earlier verification record below are preserved. For the current REAL contract, configuration, evidence labels, validation commands, local asset inventory and remaining blockers, see [REAL_ADAPTERS.md](REAL_ADAPTERS.md).
 
 Installation, environment variables, database commands and API examples are in [README.md](../README.md).
 
@@ -161,7 +209,7 @@ The complete demo requires no external credentials, model download, tile service
 
 Existing real Sentinel/CDSE and environmental/provider experiments retain their provider-specific configuration and account requirements. Production AIS requires a legally usable historical dataset or licensed provider. Never put credentials into fixtures, frontend bundles or reports. Optional PostGIS operations require `DATABASE_URL`.
 
-Real-data integration seams exist, but are not advertised as wired production adapters:
+Bounded archived-data adapters are now wired for REAL mode, but are not production services. See [REAL_ADAPTERS.md](REAL_ADAPTERS.md). The earlier integration priorities below remain relevant beyond that constrained contract:
 
 1. Replace scene loading with calibrated/georeferenced Sentinel-1 raster loading, preserving acquisition/projection/nodata metadata.
 2. Supply real clear/positive observation evidence; otherwise return an unknown or broad age interval.
@@ -186,4 +234,4 @@ Do not silently combine a synthetic environment or synthetic vessels with a real
 - The legacy database configuration includes a provider-specific TLS relaxation; review and replace with trusted CA validation before production.
 - The preserved Cloudflare build target is not a standalone Node SSR production deployment. Configure hosting and public backend URL explicitly.
 
-No external service blocker remains for the deterministic demonstration. Scientific validation on real scenes, browser acceptance testing and production hardening remain separate acceptance gates.
+No external service blocker remains for the deterministic demonstration. The opt-in Chromium saved-report switching regression now passes; its mocked-API scope and commands are documented in [REAL_ADAPTERS.md](REAL_ADAPTERS.md). Scientific validation on real scenes, broader browser acceptance testing and production hardening remain separate acceptance gates.

@@ -25,4 +25,5 @@ __pycache__/
 
 # Local generated incident archives are not source fixtures.
 backend/data/incidents/
+frontend/.osis-*-test-*/
 !**/.env.example

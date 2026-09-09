@@ -9,6 +9,7 @@ import json
 import math
 import random
 import statistics
+from report_contract import finalize
 import sys
 from pathlib import Path
 
@@ -42,8 +43,8 @@ class DemoSatelliteProvider:
             row = []
             for x in range(w):
                 # Two elongated low-backscatter regions; coast/invalid pixels excluded.
-                slick = ((x-48)/18)**2 + ((y-38)/5)**2 < 1
-                secondary = ((x-73)/7)**2 + ((y-59)/3)**2 < 1
+                slick = not scenario.get("clear") and ((x-48)/18)**2 + ((y-38)/5)**2 < 1
+                secondary = not scenario.get("clear") and ((x-73)/7)**2 + ((y-59)/3)**2 < 1
                 db = (-24 if slick or secondary else -12) + rng.gauss(0, 1.8)
                 row.append(None if x < 3 or (x == 10 and y == 10) else db)
             pixels.append(row)
@@ -191,9 +192,10 @@ def normalize_ais(records):
             mmsi = str(row.get("mmsi", row.get("MMSI", ""))).strip()
             when = timestamp(row["timestamp"])
             lat, lon = float(row["latitude"]), float(row["longitude"])
-            speed, course = float(row["speed"]), float(row["course"])
+            speed = float(row["speed"]) if row.get("speed") not in (None, "") else None
+            course = float(row["course"]) if row.get("course") not in (None, "") else None
             if not (len(mmsi)==9 and mmsi.isdigit() and -90 <= lat <=90
-                    and -180 <= lon <=180 and 0 <= speed <= 80 and 0 <= course <360):
+                    and -180 <= lon <=180 and (speed is None or 0 <= speed <= 80) and (course is None or 0 <= course <360)):
                 raise ValueError("Invalid AIS position")
             key = (mmsi, iso(when))
             if key in seen:
@@ -261,9 +263,11 @@ def correlate(records, vessels, origin, window, backward):
             duration = (timestamp(b["timestamp"])-timestamp(a["timestamp"])).total_seconds()/3600
             if 0 < duration <= 1:
                 inferred = haversine_km(a["latitude"],a["longitude"],b["latitude"],b["longitude"])/duration/1.852
-                speed_errors.append(abs(inferred-a["speed"]))
+                if a["speed"] is not None:
+                    speed_errors.append(abs(inferred-a["speed"]))
                 heading = bearing_deg(a["latitude"],a["longitude"],b["latitude"],b["longitude"])
-                heading_errors.append(abs((heading-a["course"]+180)%360-180))
+                if a["course"] is not None:
+                    heading_errors.append(abs((heading-a["course"]+180)%360-180))
         features = {
             "origin_proximity":math.exp(-dist/4),
             "temporal":math.exp(-delta/2),
@@ -282,6 +286,8 @@ def correlate(records, vessels, origin, window, backward):
             "features":{k:round(v,4) for k,v in features.items()}, "score":round(score*100,2),
             "confidence":confidence, "aisContinuity":round(continuity,3),
             "continuityStatus":"Insufficient AIS continuity data" if len(track)<3 else "evaluated",
+            "dataQuality": {"fixesInWindow": len(nearby), "speedComparisons": len(speed_errors), "courseComparisons": len(heading_errors)},
+            "vesselTypeEvidence": "Identity context only; vessel type alone neither proves nor excludes compatibility",
             "track":track, "trackSegments":segments, "anomalies":gaps,
             "evidence":f"Observed fix {dist:.2f} km from modeled origin, {delta:.1f} h from central release estimate. "
                        f"{len(nearby)} observed fixes in search window. Scores measure compatibility, not guilt."})
@@ -291,16 +297,26 @@ def correlate(records, vessels, origin, window, backward):
     return candidates, anomalies
 
 
-def analyze(scene_id="demo-arabian-sea", horizon=24):
-    if scene_id != "demo-arabian-sea":
+def _analyze(scene_id="demo-arabian-sea", horizon=24):
+    if scene_id not in ("demo-arabian-sea", "demo-no-spill", "demo-inconclusive"):
         raise ValueError("Unknown scene; only the explicitly synthetic exercise is enabled")
     if horizon not in (24,48,72):
         raise ValueError("forecastHours must be 24, 48 or 72")
     scenario = json.loads((ROOT/"data/demo/scenario.json").read_text())
+    scenario.update(id=scene_id, clear=scene_id != "demo-arabian-sea")
     scene = DemoSatelliteProvider().load(scenario)
+    if scene_id == "demo-inconclusive":
+        scene["pixels"] = [[None]*scene["width"] for _ in range(scene["height"])]
+        return {"status": "partial", "outcome": "ANALYSIS_INCONCLUSIVE", "scene": scene,
+                "forecastHours": horizon, "outcomeReason": "DEMO quality failure: SAR coverage is absent (synthetic exercise).",
+                "detector": {"name": "demo-adaptive-dark-region", "version": "1.0", "status": "insufficient_coverage"},
+                "stageStatus": {"detection": {"status": "unavailable", "kind": "DEMO/SYNTHETIC", "reason": "Zero valid SAR coverage"}}}
     detections, mask = detect(scene)
     if not detections:
-        return {"status":"no_candidates", "scene":scene, "detections":[]}
+        return {"status":"no_candidates", "scene":scene, "detections":[], "mask": mask,
+                "forecastHours": horizon, "stages": ["scene_loaded", "preprocessed", "segmented", "report_generated"],
+                "detector": {"name": "demo-adaptive-dark-region", "version": "1.0", "status": "synthetic",
+                             "validFraction": sum(v is not None for row in scene["pixels"] for v in row)/(scene["width"]*scene["height"])}}
     spill = detections[0]
     age = estimate_age(scene["acquiredAt"],scenario["previousClearAt"],scenario["firstPositiveAt"])
     env = FixtureEnvironmentProvider(scenario["environment"])
@@ -339,6 +355,10 @@ def analyze(scene_id="demo-arabian-sea", horizon=24):
                            "AIS gaps do not establish intentional disabling. Unidentified non-AIS vessels cannot be resolved.",
                            "Candidate ranking is not a finding of legal responsibility."],
             "disclaimer":scenario["disclaimer"]}
+
+
+def analyze(scene_id="demo-arabian-sea", horizon=24):
+    return finalize(_analyze(scene_id, horizon), "DEMO")
 
 
 if __name__ == "__main__":

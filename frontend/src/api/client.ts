@@ -5,16 +5,27 @@ const API_BASE_URL =
 export async function apiClient<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
 
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...options,
+      signal: options?.signal ?? AbortSignal.timeout(150000),
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error && error.name === "TimeoutError"
+        ? "PROCESSING ERROR: request timed out. Check saved reports before retrying."
+        : "NETWORK ERROR: backend is unreachable. Start the backend, check VITE_API_URL and retry.",
+    );
+  }
 
   if (!res.ok) {
-    throw new Error(`API request failed with status ${res.status}: ${res.statusText}`);
+    const detail = await res.json().catch(() => null);
+    throw new Error(`PROCESSING ERROR (${res.status}): ${detail?.error || res.statusText}`);
   }
 
   return res.json() as Promise<T>;

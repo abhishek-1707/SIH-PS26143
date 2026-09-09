@@ -1,4 +1,6 @@
 import { apiClient } from "./client";
+export type AnalysisMode = "DEMO" | "REAL" | "UPLOAD";
+export type AnalysisOutcome = "SPILL_DETECTED" | "NO_SPILL_DETECTED" | "ANALYSIS_INCONCLUSIVE";
 
 export interface Position {
   lat: number;
@@ -54,6 +56,7 @@ export interface Detection {
   geometryMethod: string;
 }
 export interface IncidentSummary {
+  mode?: AnalysisMode;
   id: string;
   acquiredAt: string;
   detectedAt: string;
@@ -61,6 +64,22 @@ export interface IncidentSummary {
   forecastHours: number;
 }
 export interface IncidentReport {
+  mode?: AnalysisMode;
+  outcome?: AnalysisOutcome;
+  outcomeMessage?: string;
+  outcomeReason?: string;
+  availability?: string;
+  processedAt?: string;
+  evidenceProvenance?: Record<string, { kind: string; reason: string }>;
+  hindcastHours?: number;
+  stageStatus?: Record<string, { status: string; kind: string; reason: string }>;
+  detector?: {
+    name: string;
+    status: string;
+    checkpointSha256?: string | null;
+    version?: string;
+    quality?: Record<string, number | string>;
+  };
   id: string;
   detectedAt: string;
   status: string;
@@ -70,14 +89,18 @@ export interface IncidentReport {
     source: string;
     width: number;
     height: number;
-    bbox: [number, number, number, number];
+    bbox: [number, number, number, number] | null;
     pixels: (number | null)[][];
     polarization: string | string[];
     resolution_m: number[];
+    nativeWidth?: number;
+    nativeHeight?: number;
+    assetSha256?: Record<string, string>;
+    jointValidFraction?: number;
   };
   mask: number[][];
   detections: Detection[];
-  spill?: Detection;
+  spill?: Detection | null;
   age?: {
     minHours: number;
     maxHours: number;
@@ -85,8 +108,8 @@ export interface IncidentReport {
     confidence: string;
     method: string;
     caveat: string;
-  };
-  origin?: Position & { releaseWindow: { start: string; end: string } };
+  } | null;
+  origin?: (Position & { releaseWindow: { start: string; end: string } }) | null;
   backward: Position[];
   forward: Position[];
   forecastHours: number;
@@ -104,8 +127,61 @@ export interface IncidentReport {
 export const listIncidents = () => apiClient<IncidentSummary[]>("/api/incidents");
 export const getIncident = (id: string) =>
   apiClient<IncidentReport>(`/api/incidents/${encodeURIComponent(id)}`);
-export const analyzeIncident = (forecastHours: number) =>
+export interface AnalysisRequest {
+  mode: "DEMO" | "REAL";
+  sceneId: string;
+  forecastHours: number;
+  hindcastHours?: number;
+  detector?: "hybrid" | "classical";
+  onDemand?: boolean;
+}
+export interface IncidentScene {
+  id: string;
+  name: string;
+  mode: "DEMO" | "REAL";
+  source: string;
+}
+export const listIncidentScenes = () => apiClient<IncidentScene[]>("/api/incidents/scenes");
+export const analyzeIncident = (request: number | AnalysisRequest) =>
   apiClient<IncidentReport>("/api/incidents/analyze", {
     method: "POST",
-    body: JSON.stringify({ sceneId: "demo-arabian-sea", forecastHours }),
+    body: JSON.stringify(
+      typeof request === "number"
+        ? { sceneId: "demo-arabian-sea", forecastHours: request }
+        : request,
+    ),
   });
+
+export async function uploadSAR(
+  vv: File,
+  vh: File,
+  acquiredAt: string,
+  rasterUnits: string,
+  sarAttested: boolean,
+  forecastHours = 24,
+  hindcastHours = 6,
+) {
+  if (vv.size > 8 * 1024 * 1024 || vh.size > 8 * 1024 * 1024)
+    throw new Error(
+      "UPLOAD ERROR: each polarization must be at most 8 MiB. Crop before uploading.",
+    );
+  return apiClient<IncidentReport>("/api/incidents/upload", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "X-OSIS-SAR-Metadata": encodeURIComponent(
+        JSON.stringify({
+          vvBytes: vv.size,
+          vvName: vv.name,
+          vhName: vh.name,
+          acquiredAt,
+          rasterUnits,
+          sarAttested,
+          forecastHours,
+          hindcastHours,
+        }),
+      ),
+    },
+    body: new Blob([vv, vh]),
+  });
+}

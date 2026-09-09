@@ -3,7 +3,9 @@
 
 SIH 2026 prototype: available SAR imagery → slick characterization → release-window inference → origin hindcast → forward drift → historical AIS correlation → evidence-ranked vessel candidates.
 
-**Use `/analysis` for the complete, backend-computed demonstration.** Its imagery, environmental conditions, historical observations and vessel identities are explicitly synthetic. It is not a live pollution surveillance service or a finding of legal responsibility.
+**Use `/analysis` for the backend-computed SIH prototype.** Select DEMO, REAL (archived or bounded on-demand CDSE), or UPLOAD. DEMO imagery, environment, observations and identities are explicitly synthetic. REAL/UPLOAD never substitute those fixtures for missing evidence. This is not an operational pollution surveillance service or a finding of legal responsibility.
+
+Every accepted analysis produces exactly one `outcome`: **SPILL_DETECTED**, **NO_SPILL_DETECTED**, or **ANALYSIS_INCONCLUSIVE**. This is separate from downstream completeness (`status`). Missing real access is `availability: REAL_DATA_UNAVAILABLE` with an inconclusive outcome. No-spill and inconclusive dashboards retain scene footprint where known, diagnostics, provenance, processing timestamp and downloadable reports.
 
 ## Quick start
 
@@ -28,9 +30,9 @@ npm --prefix frontend run dev -- --host 127.0.0.1 --port 3000
 
 Open **http://localhost:3000/analysis**. Backend defaults to http://localhost:5000.
 
-1. Select the synthetic Arabian Sea exercise.
+1. Select the synthetic Arabian Sea, no-spill, or inconclusive exercise. These require no credentials.
 2. Choose a 24, 48 or 72 hour forecast.
-3. Click **Analyze complete pipeline**.
+3. Click **Analyze DEMO pipeline**.
 4. Toggle SAR, slick polygons, origin uncertainty, hindcast, forecast, vessel tracks and AIS gaps.
 5. Select a candidate to inspect weighted evidence.
 6. Download the JSON report. Saved reports can be reopened after restarting the backend.
@@ -50,6 +52,16 @@ Defaults work without `.env`. Examples are in `backend/.env.example` and `fronte
 | `DATABASE_URL` | none | PostgreSQL connection string, required only for DB operations/legacy APIs |
 | `OSIS_TEST_DATABASE` | disabled | Opt-in DB test; set in shell before starting the test |
 | `VITE_API_URL` | `http://localhost:5000` | Browser-accessible API origin; restart/rebuild frontend after changing |
+| `REAL_SAR_PYTHON` | main interpreter | Existing ML environment with NumPy, torch, tifffile, OpenCV, matplotlib, segmentation-models-pytorch; on this workspace use the absolute `.venv-ml/Scripts/python.exe` path |
+| `REAL_MODEL_PATH` | existing root `best_sar_model.pth` | Trusted local hybrid checkpoint; never downloaded automatically |
+| `CDSE_CLIENT_ID`, `CDSE_CLIENT_SECRET` | none | OAuth client credentials with Sentinel Hub Catalog/Process access; only used when on-demand is selected |
+| `REAL_CURRENT_NETCDF`, `REAL_WIND_NETCDF` | none | Compatible bounded CMEMS `uo/vo` and ERA5 `u10/v10` subsets, explicit m/s units |
+| `REAL_AIS_CSV`, `REAL_AIS_MANIFEST` | none | Licensed observed historical fixes plus coverage/unit/source attestation |
+| `OSIS_MAX_ANALYSES` | 2 | Concurrent analyses, hard maximum 2 |
+| `OSIS_ANALYSES_PER_MINUTE` | 20 | Global local-prototype admission budget, hard maximum 30 |
+| `OSIS_UPLOAD_MAX_MIB`, `OSIS_DOWNLOAD_MAX_MIB` | 8 | Per-polarization file/response ceiling; configurable downward only |
+| `OSIS_REQUEST_TIMEOUT_MS` | 15000 | CDSE timeout including streamed body; hard maximum 20000 |
+| `OSIS_MAX_REPORTS` | 100 | Local archive count cap; configurable downward. Export/remove older reports when full; no automatic evidence deletion |
 
 Local JSON is the incident API's read store; PostGIS is an optional mirror. Database outages are explicitly reported as `unavailable_local_fallback`. A writable report directory and working Python interpreter are required. `/api/health` is **liveness**, not database/scientific-provider readiness.
 
@@ -61,7 +73,7 @@ Use a PostgreSQL database with PostGIS available, and a role allowed to create t
 npm --prefix backend run migrate
 ```
 
-This applies **`002_incidents.sql`**, an additive, repeatable migration independent of the old integer-ID spill schema. It creates `osis_incidents`, spatial indexes and views for characterization, origins, drift, candidates, AIS positions and anomalies. It does not delete old tables or seed fictional identities into legacy vessel tables.
+This applies **`002_incidents.sql` and `003_analysis_outcomes.sql`** transactionally. These additive, repeatable migrations create the incident archive/views and allow nullable geometry/acquisition for no-spill and inconclusive reports. Migration 003 also adds the outcome constraint and `osis_candidate_compatibility` view without breaking the legacy view name. They do not delete legacy records or seed fictional vessels.
 
 `001_hindcast_schema.sql` is preserved for the earlier application and depends on its existing schema. For a database that already has those legacy tables:
 
@@ -95,7 +107,19 @@ Analysis body:
 {"sceneId":"demo-arabian-sea","forecastHours":24}
 ```
 
-Both fields are optional with the values above as defaults. Other scene IDs, extra fields, string horizons and unsupported horizons are rejected. Processing is bounded to two simultaneous analyses, 60 seconds and 8 MiB of subprocess output. Errors include 400 validation, 404 missing incident, 429 capacity, 503 missing Python and 504 timeout. The frontend does not silently replace failed analysis with fabricated results.
+Both fields are optional with the values above as defaults. DEMO scene IDs also include `demo-no-spill` and `demo-inconclusive`. Unknown options, string horizons and unsupported horizons are rejected. Python processing is bounded to two simultaneous analyses, 60 seconds and 8 MiB output (SAR child: 35 seconds). CDSE acquisition has separate bounded requests before Python starts. Errors include 400 validation, 404 missing incident, 413 oversized body, 429 capacity, 503 missing Python, 504 timeout, and 507 archive capacity. Transport failures return an inconclusive error envelope, not a fake successful incident; the frontend preserves recovery controls.
+
+### REAL and UPLOAD
+
+- **REAL archived:** choose `s1a-20240619-karnataka`; select hybrid or classical. The local June 19, 2024 VV/VH subset is operator-controlled. Hybrid reuses existing PoSeATSea/classical fusion; classical-only oil-like candidates remain inconclusive. Quality/confidence thresholds are prototype gates, not calibrated accuracy.
+- **REAL on demand:** check “Fetch CDSE subset on demand”. Example body: `{"mode":"REAL","sceneId":"s1a-20240619-karnataka","onDemand":true,"detector":"hybrid","forecastHours":24,"hindcastHours":6}`. Search at most five metadata records for the selected day, then fetch two 512×512 polarization subsets for one acquisition, provider-cropped to the registry AOI. No arbitrary URLs, archive downloads or background polling. Missing access returns `REAL_DATA_UNAVAILABLE`, never DEMO data.
+- **UPLOAD:** choose UPLOAD, provide co-registered VV and VH GeoTIFFs, acquisition UTC, calibrated `db`/`linear` units and SAR attestation. Supported input is single-page/single-band FLOAT32, 512×512, north-up EPSG:4326 PixelIsArea, at most 8 MiB per file and 0.2° per AOI side. RGB/JPEG/PNG and raw SAFE products are intentionally unsupported. Do not rename photos to `.tif`.
+- `POST /api/incidents/upload` uses `application/octet-stream`: VV bytes followed by VH bytes. Header `X-OSIS-SAR-Metadata` is URI-encoded JSON containing `vvBytes`, `vvName`, `vhName`, `acquiredAt`, `rasterUnits`, `sarAttested:true`. This bounded protocol uses existing Express, not an added multipart framework. Invalid inputs within the body limit receive saved inconclusive reports; oversized/aborted transfers receive transport errors and recovery UI.
+- Upload runs the same hybrid detector and strict environmental/AIS orchestration. Forecast supports 24/48/72 hours and hindcast scenario 1–48 hours, defaulting to 24 and six hours; optional metadata fields are `forecastHours` and `hindcastHours`. Neither duration is an observed release age. Raw upload files are removed in `finally`; report preview/mask/hashes remain. Timestamp/source authenticity is operator-attested, not independently authenticated.
+
+### Laptop safety
+
+Hard limits: 0.2° AOI sides, five catalog metadata records, one selected acquisition, two sequential VV/VH outputs, 8 MiB per download, 15-second request deadlines, zero automatic retries, 60-second CDSE admission cooldown, one upload transfer, two Python analyses, and 100 reports. Cache is one scene (up to 16 MiB) for one hour in the OS temporary directory; failed products are deleted and adapter-owned expired caches are cleaned on subsequent acquisitions. Graceful expiry uses an unreferenced timer. Abrupt OS termination can leave temporary files; this is a single-process laptop prototype, not a distributed job/storage service. Environmental files/components are capped at 128 MiB, AIS CSV at 8 MiB/20,000 rows, manifest at 64 KiB. No model/data artifacts are added to Git.
 
 Example using Node (shell-independent, backend must be running):
 
@@ -110,12 +134,15 @@ Legacy `/api/spills`, `/api/detection`, `/api/drift`, `/api/vessels` and `/api/r
 ```sh
 npm --prefix backend test
 npm --prefix backend run test:legacy
+npm --prefix frontend test
 npm --prefix frontend run lint
 npm --prefix frontend run build
 node frontend/node_modules/typescript/bin/tsc --project frontend/tsconfig.json --noEmit
 ```
 
-The standard backend suite contains ten Python scientific tests and an HTTP end-to-end suite. The PostGIS suite is intentionally skipped unless enabled, and applies migration 002 twice plus evidence round-trips **inside a rolled-back transaction**.
+The backend suite includes deterministic outcomes, geometry/RK4, scoring/gaps, strict environmental/AIS coverage, upload and resource-safety regressions. Optional actual archived-SAR tests require `OSIS_TEST_REAL_SAR=true` and the existing ML interpreter. Run Python tests under both the default and ML environments where dependencies differ. PostGIS tests apply migrations twice and exercise all three outcomes **inside a rolled-back transaction**.
+
+Set `OSIS_TEST_BROWSER` to the absolute installed Chrome executable for DOM/canvas regressions. Add `OSIS_TEST_LIVE=true` for the real frontend + Express + Python acceptance test; it starts isolated servers and closes them afterward. It deliberately disables CDSE credentials and performs no satellite download. See `docs/VALIDATION.md` for the current measured results and exact scope.
 
 Enable the optional test without editing `.env`:
 
@@ -136,6 +163,7 @@ Production build retains the existing TanStack/Nitro Cloudflare target. Use the 
 - Vessel scores are transparent, uncalibrated compatibility indices. Spatial/time proximity dominates; speed/heading features check AIS consistency.
 - AIS discontinuities reduce confidence and are not proof that a transponder was deliberately disabled. Interpolated gap hypotheses are never treated as observations.
 - Identifying wholly unobserved non-AIS vessels requires additional sensor evidence and is not implemented.
-- Existing Sentinel/CDSE, environmental and trained-model experiments are preserved but are not automatically connected to the synthetic incident endpoint.
+- Existing Sentinel/CDSE and hybrid experiments are connected through explicit REAL/UPLOAD adapters, never implicitly through DEMO. A single SAR image cannot date a release: REAL/UPLOAD age is unavailable. The hindcast origin/time is a modeled analyst scenario, not observed attribution.
+- Local database inspection found 24 fixes/five vessels dated September 3–4, 2026, not June 2024. They are excluded from archived-scene attribution. Matching licensed AIS and CMEMS/ERA5 trajectory coverage are external blockers.
 
 See [technical architecture and repository audit](docs/ARCHITECTURE.md) for module responsibilities, real-data seams and production upgrades.

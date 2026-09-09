@@ -2,10 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { OceanMap, pathFrom, project } from "../components/OceanMap";
+import { SARUpload } from "../components/SARUpload";
+import { useIncident } from "../context/IncidentContext";
 import {
   analyzeIncident,
   getIncident,
   listIncidents,
+  listIncidentScenes,
   type IncidentReport,
   type Position,
 } from "../api/incidents";
@@ -26,6 +29,7 @@ function Raster({ report, onImage }: { report: IncidentReport; onImage: (url: st
     const canvas = ref.current;
     if (!canvas) return;
     const { width, height, pixels } = report.scene;
+    if (!width || !height || !pixels.length) return;
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
@@ -46,26 +50,23 @@ function Raster({ report, onImage }: { report: IncidentReport; onImage: (url: st
       ref={ref}
       className="w-full rounded bg-secondary"
       style={{ imageRendering: "pixelated" }}
-      aria-label="Synthetic SAR backscatter raster"
+      aria-label={`${report.mode === "UPLOAD" ? "User-provided" : report.mode === "REAL" ? "Archived real" : "Synthetic"} SAR backscatter preview`}
     />
   );
 }
 
-function ReportView({ report }: { report: IncidentReport }) {
+export function ReportView({ report }: { report: IncidentReport }) {
   const [enabled, setEnabled] = useState<Layer[]>([...layers]);
   const [image, setImage] = useState("");
   const [selected, setSelected] = useState(report.leadingCandidate);
   const has = (layer: Layer) => enabled.includes(layer);
-  if (!report.spill || !report.origin || !report.age) {
-    return <div className={panel}>No slick candidates detected. No attribution was generated.</div>;
-  }
   const { spill, origin, age } = report;
   const candidate = report.candidates.find((c) => c.mmsi === selected);
-  const [west, south, east, north] = report.scene.bbox;
+  const [west, south, east, north] = report.scene.bbox ?? [72.3, 15.1, 72.6, 15.4];
   const [sx, sy] = project(west, north);
   const [ex, ey] = project(east, south);
-  const [ox, oy] = project(origin.lon, origin.lat);
-  const [cx, cy] = project(spill.metrics.centroid.lon, spill.metrics.centroid.lat);
+  const [ox, oy] = origin ? project(origin.lon, origin.lat) : [0, 0];
+  const [cx, cy] = spill ? project(spill.metrics.centroid.lon, spill.metrics.centroid.lat) : [0, 0];
   const exportReport = () => {
     const url = URL.createObjectURL(
       new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
@@ -80,7 +81,9 @@ function ReportView({ report }: { report: IncidentReport }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Computed incident report</h2>
+          <h2 className="text-lg font-semibold">
+            {report.mode ?? "DEMO"} · {report.status} incident report
+          </h2>
           <p className="text-xs text-muted-foreground break-all">
             {report.id} · image {utc(report.scene.acquiredAt)}
           </p>
@@ -92,22 +95,71 @@ function ReportView({ report }: { report: IncidentReport }) {
       <p className="rounded border border-amber-400/40 p-3 text-sm text-amber-200">
         {report.disclaimer}
       </p>
+      <section className={panel} role="status" aria-label="Analysis outcome">
+        <h3 className="font-semibold">
+          {report.outcome ?? (spill ? "SPILL_DETECTED" : "ANALYSIS_INCONCLUSIVE")}
+        </h3>
+        <p>{report.outcomeMessage}</p>
+        <p>{report.outcomeReason}</p>
+        {report.availability === "REAL_DATA_UNAVAILABLE" && (
+          <p>
+            REAL_DATA_UNAVAILABLE · Use DEMO, upload compatible SAR, or configure the required
+            real-data access.
+          </p>
+        )}
+        <p className="text-xs">
+          Processing timestamp: {utc(report.processedAt ?? report.detectedAt)} · Source:{" "}
+          {report.scene.source}
+        </p>
+        <p className="text-xs">
+          {report.scene.bbox
+            ? `Analyzed bounds: ${report.scene.bbox.join(", ")}`
+            : "Scene location unavailable. Map is contextual only; no analyzed footprint claimed."}
+        </p>
+        <p className="text-xs">
+          Detector: {report.detector?.name ?? "unavailable"} ·{" "}
+          {report.detector?.version ?? "version unavailable"} · {report.detector?.status}
+        </p>
+        {report.detector?.quality && (
+          <pre className="overflow-auto text-xs">
+            {JSON.stringify(report.detector.quality, null, 2)}
+          </pre>
+        )}
+      </section>
+      {report.stageStatus && (
+        <section className={panel} aria-label="Evidence availability">
+          <h3 className="mb-2 font-medium">Evidence availability · no synthetic substitution</h3>
+          {Object.entries(report.stageStatus).map(([name, stage]) => (
+            <p key={name} className="mb-2 text-xs">
+              <strong>
+                {name}: {stage.status} · {stage.kind}
+              </strong>{" "}
+              — {stage.reason}
+            </p>
+          ))}
+          <p className="text-sm">
+            {report.mode === "DEMO"
+              ? "Synthetic exercise; no real observations claimed."
+              : `Hindcast scenario: ${report.hindcastHours}h before image time; AIS search ±1h. Not measured spill age.`}
+          </p>
+        </section>
+      )}
       <div className="grid gap-3 sm:grid-cols-4">
         <div className={panel}>
           <p className="text-xs text-muted-foreground">Detected envelope</p>
-          <strong>{spill.metrics.areaKm2} km²</strong>
+          <strong>{spill ? `${spill.metrics.areaKm2} km²` : "Unavailable"}</strong>
           <p className="text-xs">{report.detections.length} dark slick candidates</p>
         </div>
         <div className={panel}>
           <p className="text-xs text-muted-foreground">Estimated age</p>
-          <strong>
-            {age.minHours}–{age.maxHours} hours
-          </strong>
-          <p className="text-xs">{age.confidence} confidence</p>
+          <strong>{age ? `${age.minHours}–${age.maxHours} hours` : "Unavailable"}</strong>
+          <p className="text-xs">
+            {age ? `${age.confidence} confidence` : "Single image cannot date release"}
+          </p>
         </div>
         <div className={panel}>
           <p className="text-xs text-muted-foreground">Dark-slick index (not oil probability)</p>
-          <strong>{(spill.confidence * 100).toFixed(1)} / 100</strong>
+          <strong>{spill ? `${(spill.confidence * 100).toFixed(1)} / 100` : "Unavailable"}</strong>
         </div>
         <div className={panel}>
           <p className="text-xs text-muted-foreground">Leading candidate</p>
@@ -139,6 +191,9 @@ function ReportView({ report }: { report: IncidentReport }) {
           key={report.id}
           height={510}
           initialZoom={1.4}
+          initialCenter={
+            report.mode !== "DEMO" ? [(west + east) / 2, (south + north) / 2] : undefined
+          }
           legend={
             <span>
               Orange: hindcast · cyan: forecast · pink: detection · dashed red: unobserved AIS gap
@@ -157,6 +212,21 @@ function ReportView({ report }: { report: IncidentReport }) {
               <path d="M0,0 L6,3 L0,6" fill="#22d3ee" />
             </marker>
           </defs>
+          {report.scene.bbox && (
+            <rect
+              aria-label="Analyzed scene footprint"
+              x={sx}
+              y={sy}
+              width={ex - sx}
+              height={ey - sy}
+              fill="none"
+              stroke="#94a3b8"
+              strokeWidth={2}
+              strokeDasharray="6 4"
+            >
+              <title>Analyzed scene footprint</title>
+            </rect>
+          )}
           {has("SAR") && image && (
             <image href={image} x={sx} y={sy} width={ex - sx} height={ey - sy} opacity={0.8} />
           )}
@@ -169,12 +239,10 @@ function ReportView({ report }: { report: IncidentReport }) {
                 stroke="#fb7185"
                 strokeWidth={2}
               >
-                <title>
-                  Candidate {i + 1}: {d.metrics.areaKm2} km²
-                </title>
+                <title>{`Candidate ${i + 1}: ${d.metrics.areaKm2} km²`}</title>
               </path>
             ))}
-          {has("Origin") && (
+          {has("Origin") && origin && (
             <g>
               <ellipse
                 cx={ox}
@@ -217,7 +285,7 @@ function ReportView({ report }: { report: IncidentReport }) {
             return (
               <circle key={i} cx={x} cy={y} r={3} fill={p.hours < 0 ? "#fb923c" : "#22d3ee"}>
                 <title>
-                  {utc(p.timestamp)} · {p.hours}h · sensitivity ±{p.uncertaintyKm}km
+                  {`${utc(p.timestamp)} · ${p.hours}h · sensitivity ±${p.uncertaintyKm}km`}
                 </title>
               </circle>
             );
@@ -239,9 +307,7 @@ function ReportView({ report }: { report: IncidentReport }) {
                   const [x, y] = project(p.longitude, p.latitude);
                   return (
                     <circle key={j} cx={x} cy={y} r={3} fill={colors[i % colors.length]}>
-                      <title>
-                        {c.name} · {utc(p.timestamp)} · {p.speed.toFixed(1)} kn
-                      </title>
+                      <title>{`${c.name} · ${utc(p.timestamp)} · ${p.speed.toFixed(1)} kn`}</title>
                     </circle>
                   );
                 })}
@@ -260,15 +326,17 @@ function ReportView({ report }: { report: IncidentReport }) {
                 strokeDasharray="3 5"
                 fill="none"
               >
-                <title>
-                  {a.durationHours} h unobserved corridor · {a.label}
-                </title>
+                <title>{`${a.durationHours} h unobserved corridor · ${a.label}`}</title>
               </path>
             ))}
-          <circle cx={cx} cy={cy} r={4} fill="#fff" />
-          <text x={cx + 8} y={cy + 14} fill="#fff" fontSize={11}>
-            Image-time detection
-          </text>
+          {spill && (
+            <g>
+              <circle cx={cx} cy={cy} r={4} fill="#fff" />
+              <text x={cx + 8} y={cy + 14} fill="#fff" fontSize={11}>
+                Image-time candidate
+              </text>
+            </g>
+          )}
         </OceanMap>
         <p className="mt-2 text-xs text-muted-foreground">
           Regional schematic coordinate map, not navigational cartography. Modeled trajectories
@@ -278,38 +346,67 @@ function ReportView({ report }: { report: IncidentReport }) {
       </section>
       <div className="grid gap-4 md:grid-cols-3">
         <section className={panel}>
-          <h3 className="mb-2 font-medium">SAR input · synthetic</h3>
-          <Raster report={report} onImage={setImage} />
+          <h3 className="mb-2 font-medium">
+            SAR input ·{" "}
+            {report.mode === "UPLOAD"
+              ? "user-provided"
+              : report.mode === "REAL"
+                ? "real archived / on demand"
+                : "synthetic"}
+          </h3>
+          {report.scene.pixels.length ? (
+            <Raster report={report} onImage={setImage} />
+          ) : (
+            <p>Preview unavailable; see detection stage.</p>
+          )}
           <p className="mt-2 text-xs">
             {report.scene.width}×{report.scene.height} pixels · {String(report.scene.polarization)}{" "}
-            · {report.scene.resolution_m.map((n) => n.toFixed(0)).join("×")} m/pixel
+            · {report.scene.resolution_m.map((n) => n.toFixed(1)).join("×")} m/native pixel
+            {report.scene.nativeWidth &&
+              ` · native ${report.scene.nativeWidth}×${report.scene.nativeHeight}; display subsampled 4×`}
           </p>
           <p className="mt-2 text-xs text-muted-foreground">
-            Median speckle smoothing → dark-region threshold → connected components → convex
-            envelope. Not a trained oil classifier.
+            {report.mode === "REAL" || report.mode === "UPLOAD"
+              ? `Experimental ${report.detector?.name ?? "unavailable"} detector. Uncalibrated scores, not confirmed oil or probability of oil.`
+              : "Median speckle smoothing → dark-region threshold → connected components → convex envelope. Not a trained oil classifier."}
           </p>
         </section>
         <section className={panel}>
           <h3 className="mb-2 font-medium">Characterization & age</h3>
-          <p className="text-sm">
-            Perimeter: {spill.metrics.perimeterM.toFixed(0)} m<br />
-            Length × width: {spill.metrics.lengthM.toFixed(0)} × {spill.metrics.widthM.toFixed(0)} m
+          {spill && (
+            <p className="text-sm">
+              Perimeter: {spill.metrics.perimeterM.toFixed(0)} m<br />
+              Length × width: {spill.metrics.lengthM.toFixed(0)} × {spill.metrics.widthM.toFixed(0)}{" "}
+              m
+            </p>
+          )}
+          <p className="mt-2 text-xs">{spill?.geometryMethod ?? "Characterization unavailable"}</p>
+          <p className="mt-2 text-xs">
+            {age?.method.replaceAll("_", " ") ?? "Spill age unavailable"}
           </p>
-          <p className="mt-2 text-xs">{spill.geometryMethod}</p>
-          <p className="mt-2 text-xs">{age.method.replaceAll("_", " ")}</p>
-          <p className="mt-2 text-xs text-muted-foreground">{age.caveat}</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {age?.caveat ??
+              "Hindcast duration is an analyst-selected scenario, not an age estimate."}
+          </p>
         </section>
         <section className={panel}>
           <h3 className="mb-2 font-medium">Origin & environment</h3>
-          <p className="text-sm">
-            {origin.lat.toFixed(5)}° N, {origin.lon.toFixed(5)}° E
-          </p>
-          <p className="text-xs">
-            {utc(origin.releaseWindow.start)} → {utc(origin.releaseWindow.end)}
-          </p>
-          <p className="my-2 text-xs">
-            Origin sensitivity radius: {origin.uncertaintyKm} km · forecast {report.forecastHours}h
-          </p>
+          {origin ? (
+            <>
+              <p className="text-sm">
+                {origin.lat.toFixed(5)}° N, {origin.lon.toFixed(5)}° E
+              </p>
+              <p className="text-xs">
+                {utc(origin.releaseWindow.start)} → {utc(origin.releaseWindow.end)}
+              </p>
+              <p className="my-2 text-xs">
+                Origin sensitivity radius: {origin.uncertaintyKm} km · forecast{" "}
+                {report.forecastHours}h
+              </p>
+            </>
+          ) : (
+            <p className="text-sm">Modeled origin unavailable. No release location inferred.</p>
+          )}
           {Object.entries(report.environment).map(([k, v]) => (
             <p className="text-xs break-words" key={k}>
               {k}: {String(v)}
@@ -321,7 +418,11 @@ function ReportView({ report }: { report: IncidentReport }) {
         <h3 className="mb-3 font-medium">Vessel compatibility ranking</h3>
         <p className="mb-3 text-xs text-muted-foreground">{report.scoring.note}</p>
         {report.candidates.length === 0 ? (
-          <p>No observed vessel fixes met spatial/temporal criteria.</p>
+          <p>
+            {report.stageStatus?.["ais"]?.status === "unavailable"
+              ? `AIS unavailable: ${report.stageStatus["ais"].reason}. No attribution generated.`
+              : "No observed vessel fixes met spatial/temporal criteria."}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -395,9 +496,26 @@ function ReportView({ report }: { report: IncidentReport }) {
             </div>
           ))
         ) : (
-          <p className="text-sm">No qualifying discontinuities in available candidate tracks.</p>
+          <p className="text-sm">
+            {report.stageStatus?.["ais"]?.status === "unavailable"
+              ? "AIS discontinuities not evaluated: compatible tracks unavailable."
+              : "No qualifying discontinuities in available candidate tracks."}
+          </p>
         )}
       </section>
+      {report.evidenceProvenance && (
+        <section className={panel} aria-label="Result provenance">
+          <h3 className="font-medium">Evidence provenance</h3>
+          {Object.entries(report.evidenceProvenance).map(([name, evidence]) => (
+            <p key={name} className="text-xs">
+              <strong>
+                {name}: {evidence.kind}
+              </strong>{" "}
+              — {evidence.reason}
+            </p>
+          ))}
+        </section>
+      )}
       <details className={panel}>
         <summary className="cursor-pointer">Pipeline audit trail, provenance & limitations</summary>
         <ol className="my-3 flex flex-wrap gap-2">
@@ -412,6 +530,20 @@ function ReportView({ report }: { report: IncidentReport }) {
             {k}: {v}
           </p>
         ))}
+        {report.mode !== "DEMO" && (
+          <pre className="mt-3 overflow-auto whitespace-pre-wrap break-all text-xs">
+            {JSON.stringify(
+              {
+                assets: report.scene.assetSha256,
+                jointValidFraction: report.scene.jointValidFraction,
+                detector: report.detector,
+                environment: report.environment,
+              },
+              null,
+              2,
+            )}
+          </pre>
+        )}
         <p className="my-2 text-xs">
           Storage: {report.persistence.local} · database: {report.persistence.database}
         </p>
@@ -428,7 +560,18 @@ function ReportView({ report }: { report: IncidentReport }) {
 function AnalysisPage() {
   const client = useQueryClient();
   const [horizon, setHorizon] = useState(24);
-  const [id, setId] = useState("");
+  const [sceneId, setSceneId] = useState("demo-arabian-sea");
+  const [onDemand, setOnDemand] = useState(false);
+  const [hindcastHours, setHindcastHours] = useState(6);
+  const [detector, setDetector] = useState<"hybrid" | "classical">("hybrid");
+  const scenes = useQuery({
+    queryKey: ["incident-scenes"],
+    queryFn: listIncidentScenes,
+    retry: false,
+  });
+  const mode =
+    sceneId === "upload" ? "UPLOAD" : (scenes.data?.find((s) => s.id === sceneId)?.mode ?? "DEMO");
+  const { selectedReportId: id, setSelectedReportId: setId } = useIncident();
   const [seconds, setSeconds] = useState(0);
   const history = useQuery({ queryKey: ["incidents"], queryFn: listIncidents, retry: false });
   const saved = useQuery({
@@ -450,7 +593,7 @@ function AnalysisPage() {
     const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(timer);
   }, [analysis.isPending]);
-  const error = analysis.error || saved.error || history.error;
+  const error = analysis.error || saved.error || history.error || scenes.error;
   return (
     <div className="space-y-5">
       <div>
@@ -463,10 +606,64 @@ function AnalysisPage() {
       <section className={`${panel} flex flex-wrap items-end gap-4`}>
         <label className="text-xs">
           Available scene
-          <select className="mt-1 block rounded bg-secondary p-2 text-sm" aria-label="Scene">
-            <option>Arabian Sea · synthetic SAR exercise</option>
+          <select
+            value={sceneId}
+            onChange={(e) => setSceneId(e.target.value)}
+            className="mt-1 block rounded bg-secondary p-2 text-sm"
+            aria-label="Scene"
+          >
+            <option value="demo-arabian-sea">DEMO · Arabian Sea synthetic exercise</option>
+            <option value="demo-no-spill">DEMO · No spill exercise</option>
+            <option value="demo-inconclusive">DEMO · Inconclusive exercise</option>
+            <option value="upload">UPLOAD · Provide calibrated SAR</option>
+            {scenes.data
+              ?.filter((s) => s.mode === "REAL")
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  REAL · {s.name}
+                </option>
+              ))}
           </select>
         </label>
+        {mode !== "DEMO" && (
+          <>
+            {mode === "REAL" && (
+              <>
+                <label className="text-xs">
+                  <input
+                    type="checkbox"
+                    checked={onDemand}
+                    onChange={(e) => setOnDemand(e.target.checked)}
+                  />{" "}
+                  Fetch CDSE subset on demand (otherwise use archived local SAR)
+                </label>
+                <label className="text-xs">
+                  Experimental detector
+                  <select
+                    value={detector}
+                    onChange={(e) => setDetector(e.target.value as "hybrid" | "classical")}
+                    className="mt-1 block rounded bg-secondary p-2 text-sm"
+                  >
+                    <option value="hybrid">Hybrid (checkpoint required)</option>
+                    <option value="classical">Classical</option>
+                  </select>
+                </label>
+              </>
+            )}
+            <label className="text-xs">
+              Hindcast scenario hours (NOT age)
+              <input
+                type="number"
+                min={1}
+                max={48}
+                step={1}
+                value={hindcastHours}
+                onChange={(e) => setHindcastHours(Number(e.target.value))}
+                className="mt-1 block w-28 rounded bg-secondary p-2 text-sm"
+              />
+            </label>
+          </>
+        )}
         <label className="text-xs">
           Forecast horizon
           <select
@@ -483,14 +680,18 @@ function AnalysisPage() {
         </label>
         <button
           className={`${button} bg-primary text-primary-foreground`}
-          disabled={analysis.isPending}
+          disabled={analysis.isPending || mode === "UPLOAD"}
           onClick={() => {
             setSeconds(0);
-            analysis.mutate(horizon);
+            analysis.mutate(
+              mode === "REAL"
+                ? { mode, sceneId, forecastHours: horizon, hindcastHours, detector, onDemand }
+                : { mode: "DEMO", sceneId, forecastHours: horizon },
+            );
           }}
         >
           {" "}
-          {analysis.isPending ? "Analyzing…" : "Analyze complete pipeline"}{" "}
+          {analysis.isPending ? "Analyzing…" : `Analyze ${mode} pipeline`}{" "}
         </button>
         <label className="text-xs">
           Saved reports
@@ -506,12 +707,28 @@ function AnalysisPage() {
             <option value="">Select report</option>
             {history.data?.map((r) => (
               <option value={r.id} key={r.id}>
-                {r.detectedAt.slice(0, 19)} · {r.forecastHours}h · {r.id.slice(0, 8)}
+                {r.mode ?? "DEMO"} · {r.status} · {r.detectedAt.slice(0, 19)} · {r.id.slice(0, 8)}
               </option>
             ))}
           </select>
         </label>
       </section>
+      <p className="text-sm font-medium">
+        Next analysis mode: {mode}. Saved reports retain their original mode and evidence.
+      </p>
+      {mode === "UPLOAD" && (
+        <SARUpload
+          disabled={analysis.isPending}
+          forecastHours={horizon}
+          hindcastHours={hindcastHours}
+          onSuccess={(r) => {
+            analysis.reset();
+            client.setQueryData(["incident", r.id], r);
+            setId(r.id);
+            void client.invalidateQueries({ queryKey: ["incidents"] });
+          }}
+        />
+      )}
       {analysis.isPending && (
         <div role="status" className={panel}>
           Computing scientific pipeline on backend · {seconds}s elapsed. Stages will be confirmed
@@ -525,13 +742,25 @@ function AnalysisPage() {
             Ensure the backend is running on the configured VITE_API_URL. No mock result has been
             substituted.
           </p>
+          <button
+            className={button}
+            onClick={() => {
+              analysis.reset();
+              void history.refetch();
+              void scenes.refetch();
+              if (id) void saved.refetch();
+            }}
+          >
+            Retry loading data
+          </button>
         </div>
       )}
       {saved.isFetching && <p role="status">Loading saved incident…</p>}
       {!id && !analysis.isPending && (
         <p className="py-10 text-center text-muted-foreground">
-          Select the synthetic scene and analyze. No credentials or database are required. All
-          vessel identities are fictional.
+          DEMO is deterministic and uses fictional vessels. REAL uses trusted archived SAR and
+          reports partial evidence when matching environmental fields or historical AIS are
+          unavailable.
         </p>
       )}
       {saved.data && <ReportView key={saved.data.id} report={saved.data} />}

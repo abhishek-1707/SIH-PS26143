@@ -128,16 +128,18 @@ CLASS_COLORS_RGB = {
 # 1. GEOREFERENCING & RASTER UTILITIES
 # ==============================================================================
 
-def read_calibrate_raster(path: Path):
+def read_calibrate_raster(path: Path, units=None):
     """Reads GeoTIFF raster and ensures calibrated dB values."""
     arr = tifffile.imread(str(path)).astype(np.float32)
-    if arr.min() >= 0.0 and arr.mean() < 1.0:
-        valid = arr > 0
+    if units not in (None, "linear", "db"):
+        raise ValueError("Expected explicit linear or db units")
+    if units == "linear" or (units is None and arr.min() >= 0.0 and arr.mean() < 1.0):
+        valid = np.isfinite(arr) & (arr > 0)
         db = np.full_like(arr, -9999.0)
         db[valid] = 10.0 * np.log10(arr[valid])
         return db, valid
     else:
-        valid = arr > -9000.0
+        valid = np.isfinite(arr) & (arr > -9000.0)
         return arr, valid
 
 
@@ -515,7 +517,21 @@ def fuse_evidence(candidate, pose_res, dist_to_land, has_land):
 # 5. SPATIAL MERGING & STANDARDIZED SPILL OBJECT GENERATION
 # ==============================================================================
 
-def merge_candidates_to_spill_objects(retained_candidates, pose_res, aoi_bbox, w=512, h=512):
+def polygon_from_mask(mask, aoi_bbox, w, h):
+    """Existing simplified outer-contour geometry; holes are not represented."""
+    cnts, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return {"type": "Polygon", "coordinates": []}
+    main_cnt = max(cnts, key=cv2.contourArea)
+    factor = FUSION_CONFIG["fusionWeights"]["spatialMerging"]["contourSimplifyEpsilon"]
+    approx = cv2.approxPolyDP(main_cnt, max(1.0, factor * cv2.arcLength(main_cnt, True)), True)
+    ring = [[round(v, 6) for v in raster_to_geo_coords(float(p[0][0]), float(p[0][1]), aoi_bbox, w, h)] for p in approx]
+    if ring and ring[0] != ring[-1]:
+        ring.append(ring[0])
+    return {"type": "Polygon", "coordinates": [ring]}
+
+
+def merge_candidates_to_spill_objects(retained_candidates, pose_res, aoi_bbox, w=512, h=512, include_masks=False):
     """
     Groups proximate confirmed candidates and intersecting POSEatSea oil regions into
     standardized GeoJSON Spill Objects.
@@ -578,31 +594,12 @@ def merge_candidates_to_spill_objects(retained_candidates, pose_res, aoi_bbox, w
         mean_pol_diff = float(np.mean([c["vvVhDifferenceDb"] for c in member_cands]))
         mean_coast_prox = float(np.mean([c["fusion"]["evidence"]["coastalProximity"] for c in member_cands]))
 
-        # Contour extraction for GeoJSON polygon
-        cnts, _ = cv2.findContours(s_mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        poly_coords = []
-        if cnts:
-            main_cnt = max(cnts, key=cv2.contourArea)
-            eps_factor = FUSION_CONFIG["fusionWeights"]["spatialMerging"]["contourSimplifyEpsilon"]
-            epsilon = eps_factor * cv2.arcLength(main_cnt, True)
-            approx = cv2.approxPolyDP(main_cnt, max(1.0, epsilon), True)
-            ring = []
-            for pt in approx:
-                px_x, px_y = float(pt[0][0]), float(pt[0][1])
-                p_lon, p_lat = raster_to_geo_coords(px_x, px_y, aoi_bbox, w, h)
-                ring.append([round(p_lon, 6), round(p_lat, 6)])
-            if ring:
-                if ring[0] != ring[-1]:
-                    ring.append(ring[0])
-                poly_coords.append(ring)
+        geometry = polygon_from_mask(s_mask, aoi_bbox, w, h)
 
         spill_obj = {
             "spillDetected": True,
             "confidence": round(float(fused_confidence), 3),
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": poly_coords
-            },
+            "geometry": geometry,
             "centroid": {
                 "lat": round(float(lat), 6),
                 "lon": round(float(lon), 6)
@@ -624,6 +621,8 @@ def merge_candidates_to_spill_objects(retained_candidates, pose_res, aoi_bbox, w
             "pixelCount": area_px,
             "associatedCandidateIds": [c["clusterId"] for c in member_cands]
         }
+        if include_masks:
+            spill_obj["mask"] = s_mask
         spill_objects.append(spill_obj)
 
     # Sort spills by confidence descending
