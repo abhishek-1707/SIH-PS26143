@@ -1,8 +1,9 @@
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from "react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   getIncident,
   listIncidents,
+  analyzeIncident,
   type IncidentReport,
   type IncidentSummary,
 } from "../api/incidents";
@@ -30,6 +31,11 @@ export interface IncidentContextType {
   historyLoading: boolean;
   historyError: Error | null;
   refetchHistory: () => void;
+
+  /** Whether the system is auto-loading the first incident */
+  autoLoading: boolean;
+  /** Whether an incident switch is currently in flight */
+  isSwitchingIncident: boolean;
 }
 
 const IncidentContext = createContext<IncidentContextType | null>(null);
@@ -39,6 +45,9 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
   const [activeReport, setActiveReportState] = useState<IncidentReport | null>(null);
   // Track which report ID is "pending" when we want to load by ID.
   const [pendingId, setPendingId] = useState<string>("");
+  // Track auto-loading state
+  const autoLoadAttempted = useRef(false);
+  const [autoLoading, setAutoLoading] = useState(false);
 
   // Fetch the history list.
   const {
@@ -54,7 +63,7 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
   });
 
   // When a report ID is pending (from setActiveReportId), fetch it.
-  const { data: fetchedReport } = useQuery<IncidentReport>({
+  const { data: fetchedReport, isLoading: isFetchingPending } = useQuery<IncidentReport>({
     queryKey: ["incident", pendingId],
     queryFn: () => getIncident(pendingId),
     enabled: !!pendingId,
@@ -62,27 +71,66 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
     retry: false,
   });
 
-  // When the fetched report arrives, promote it to the active report.
-  // (This effect runs whenever fetchedReport changes and pendingId matches.)
-  // We do this with a useMemo-style derivation: if fetchedReport is for the
-  // current pendingId and is not already the active report, update.
-  const resolvedReport = useMemo(() => {
-    if (fetchedReport && pendingId && fetchedReport.id === pendingId) {
-      return fetchedReport;
-    }
-    return null;
-  }, [fetchedReport, pendingId]);
+  // Auto-analyze mutation (used only when no saved reports exist)
+  const autoAnalyze = useMutation({
+    mutationFn: () => analyzeIncident({ mode: "DEMO", sceneId: "demo-arabian-sea", forecastHours: 24 }),
+    onSuccess: (r) => {
+      queryClient.setQueryData(["incident", r.id], r);
+      setActiveReportState(r);
+      setAutoLoading(false);
+      void queryClient.invalidateQueries({ queryKey: ["incidents"] });
+    },
+    onError: () => {
+      setAutoLoading(false);
+    },
+  });
 
-  // Merge: if we have a resolved report from the fetch and it differs from activeReport, use it.
-  const effectiveReport = resolvedReport ?? activeReport;
-  // If pendingId matches the effectiveReport, clear the pending flag conceptually.
-  // We track this so state doesn't bounce.
-  const displayReport =
-    pendingId && effectiveReport && effectiveReport.id === pendingId
-      ? effectiveReport
-      : pendingId
-        ? null // still loading
-        : activeReport;
+  // Auto-load: when history arrives and no report is selected, pick the best default
+  useEffect(() => {
+    if (autoLoadAttempted.current) return;
+    if (historyLoading || !historyData) return;
+    if (activeReport) return; // already have something
+
+    autoLoadAttempted.current = true;
+
+    if (historyData.length > 0) {
+      // Find the most recent DEMO + SPILL_DETECTED report for demo-arabian-sea
+      const arabianSeaSpill = historyData.find(
+        (r) =>
+          (r.sceneId === "demo-arabian-sea" || r.source === "synthetic_demo") &&
+          r.outcome === "SPILL_DETECTED"
+      );
+      const bestDemo = historyData.find(
+        (r) => (r.mode === "DEMO" || !r.mode) && r.outcome === "SPILL_DETECTED"
+      );
+      const target = arabianSeaSpill ?? bestDemo ?? historyData[0]; // fallback to most recent
+      if (target) {
+        setAutoLoading(true);
+        // Try cache first
+        const cached = queryClient.getQueryData<IncidentReport>(["incident", target.id]);
+        if (cached) {
+          setActiveReportState(cached);
+          setAutoLoading(false);
+        } else {
+          setPendingId(target.id);
+        }
+      }
+    } else {
+      // No saved reports — trigger automatic analysis
+      setAutoLoading(true);
+      autoAnalyze.mutate();
+    }
+  }, [historyData, historyLoading, activeReport, queryClient, autoAnalyze]);
+
+  // When pending report arrives, synchronize state & query client cache
+  useEffect(() => {
+    if (fetchedReport && pendingId && fetchedReport.id === pendingId) {
+      queryClient.setQueryData(["incident", fetchedReport.id], fetchedReport);
+      setActiveReportState(fetchedReport);
+      setPendingId("");
+      setAutoLoading(false);
+    }
+  }, [fetchedReport, pendingId, queryClient]);
 
   const setActiveReport = useCallback(
     (report: IncidentReport) => {
@@ -103,7 +151,7 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
         setActiveReportState(cached);
         setPendingId("");
       } else {
-        setActiveReportState(null); // clear stale report while loading
+        setActiveReportState(null); // clear stale report while loading new one
         setPendingId(id);
       }
     },
@@ -115,12 +163,6 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
     setPendingId("");
   }, []);
 
-  // When the pending query resolves, promote to activeReport.
-  // We do this by detecting when displayReport has loaded.
-  // To avoid an infinite loop we track if we already promoted.
-  // Instead, we derive it: if pendingId is set and fetchedReport matches, call setActiveReport.
-  // We use a ref-less approach: check in the render phase via useMemo side-effect avoidance.
-  // The cleanest approach: treat displayReport as the union:
   const finalReport: IncidentReport | null = (() => {
     if (!pendingId) return activeReport;
     if (fetchedReport && fetchedReport.id === pendingId) return fetchedReport;
@@ -138,6 +180,8 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
       historyLoading,
       historyError: historyError ?? null,
       refetchHistory: () => void refetchHistory(),
+      autoLoading,
+      isSwitchingIncident: !!pendingId || isFetchingPending,
     }),
     [
       finalReport,
@@ -148,6 +192,9 @@ export function IncidentProvider({ children }: { children: ReactNode }) {
       historyLoading,
       historyError,
       refetchHistory,
+      autoLoading,
+      pendingId,
+      isFetchingPending,
     ],
   );
 

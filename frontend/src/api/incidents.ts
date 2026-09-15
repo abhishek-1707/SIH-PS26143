@@ -63,6 +63,39 @@ export interface IncidentSummary {
   status: string;
   outcome?: AnalysisOutcome;
   forecastHours: number;
+  sceneId?: string;
+  source?: string;
+  leadingCandidate?: string | null;
+}
+
+/** Derive a human-readable incident name from a report or summary. */
+export function getIncidentLabel(
+  item: { mode?: string; sceneId?: string; source?: string; outcome?: string; id?: string; scene?: { id?: string; source?: string } } | null,
+): string {
+  if (!item) return "No incident selected";
+  const sceneId = (item.sceneId ?? item.scene?.id ?? "").toLowerCase();
+  const source = (item.source ?? item.scene?.source ?? "").toLowerCase();
+
+  // Match specific scene IDs first to avoid colliding with common source strings
+  if (sceneId === "demo-arabian-sea") return "Arabian Sea Demo";
+  if (sceneId === "demo-no-spill") return "No-Spill Exercise";
+  if (sceneId === "demo-inconclusive") return "Inconclusive Exercise";
+  if (sceneId.includes("karnataka") || source.includes("karnataka")) return "Karnataka Sentinel-1A";
+  if (sceneId.includes("wakashio") || source.includes("wakashio")) return "Wakashio";
+  if (sceneId.includes("ulysse") || source.includes("ulysse")) return "Ulysse";
+
+  if (source === "synthetic_demo") return "Arabian Sea Demo";
+  if (source === "archived_sentinel1") return `Sentinel-1A (${sceneId.slice(0, 15)})`;
+  if (item.mode === "UPLOAD") return "User Upload";
+  if (item.mode === "REAL") return `Real SAR — ${sceneId ? sceneId.slice(0, 20) : (item.id ? item.id.slice(0, 8) : "Active")}`;
+
+  if (sceneId) {
+    return sceneId.replace(/[-_]/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+  }
+  if (item.id) {
+    return `Incident ${item.id.slice(0, 8)}`;
+  }
+  return "Arabian Sea Demo";
 }
 export interface IncidentReport {
   mode?: AnalysisMode;

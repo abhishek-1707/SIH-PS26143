@@ -1,78 +1,128 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { OceanMap, pathFrom, project } from "../components/OceanMap";
-import { KeyVal, Panel, Stat, StatusDot } from "../components/ui-kit";
 import { useIncident } from "../context/IncidentContext";
+import { getIncidentLabel } from "../api/incidents";
+import { OceanMap, pathFrom, project } from "../components/OceanMap";
+import { Marker } from "../components/OceanMap";
+import { KeyVal, OutcomeBadge, Panel, Stat } from "../components/ui-kit";
+import {
+  Radar,
+  Compass,
+  Ship,
+  Users,
+  ArrowRight,
+  CheckCircle2,
+  AlertTriangle,
+  HelpCircle,
+  Loader2,
+  Layers,
+  MapPin,
+  Clock,
+  Target,
+  Activity,
+  LayoutDashboard,
+} from "lucide-react";
 
-export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Overview — Oil Spill Detection & Vessel Attribution" },
-      {
-        name: "description",
-        content:
-          "Live overview of active oil spills in the Arabian Sea with probable origin and top suspect vessel.",
-      },
-      { property: "og:title", content: "Overview — Oil Spill Detection Console" },
-      {
-        property: "og:description",
-        content: "Active spill summary, probable release origin and leading suspect vessel.",
-      },
-    ],
-  }),
-  component: OverviewPage,
-});
+export const Route = createFileRoute("/")(
+  {
+    head: () => ({
+      meta: [
+        {
+          title:
+            "O.S.I.S. — Oil Spill Identification & Source Attribution System",
+        },
+        {
+          name: "description",
+          content:
+            "Operational satellite radar spill detection, Lagrangian hydrodynamic drift backtracking, and AIS vessel correlation for maritime surveillance.",
+        },
+      ],
+    }),
+    component: OverviewDashboard,
+  },
+);
 
 const utc = (iso: string) => {
+  if (!iso) return "N/A";
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
   return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
 };
 
-function OverviewPage() {
-  const { activeReport } = useIncident();
+function OverviewDashboard() {
+  const { activeReport, autoLoading, historyLoading } = useIncident();
 
-  if (!activeReport) {
+  // Loading state
+  if (autoLoading || historyLoading) {
     return (
-      <div className="space-y-5">
+      <div className="mx-auto max-w-5xl py-16 text-center space-y-6">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded border border-border bg-secondary">
+          <Loader2 className="h-8 w-8 animate-spin text-[var(--accent-blue)]" />
+        </div>
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Operations overview</h1>
-          <p className="text-sm text-muted-foreground">
-            Arabian Sea sector · no active incident analysis
+          <h1 className="text-xl font-semibold text-foreground font-mono">
+            O.S.I.S.
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Loading incident data…
           </p>
         </div>
-        <Panel className="flex flex-col items-center justify-center p-12 text-center">
-          <p className="text-sm font-medium text-foreground">No active incident analysis</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Run an analysis from{" "}
-            <Link to="/analysis" className="text-primary underline">
-              Analyze Incident
-            </Link>{" "}
-            or open a saved report.
+      </div>
+    );
+  }
+
+  // No report loaded — prompt to analyze
+  if (!activeReport) {
+    return (
+      <div className="mx-auto max-w-4xl py-12 space-y-8">
+        <div className="text-center space-y-3">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            O.S.I.S.
+          </h1>
+          <p className="text-base text-muted-foreground">
+            Oil Spill Identification &amp; Source Attribution System
           </p>
-        </Panel>
+          <p className="text-xs text-muted-foreground max-w-lg mx-auto">
+            Autonomous pipeline integrating Sentinel-1 SAR detection,
+            Lagrangian drift backtracking, and AIS vessel correlation to detect
+            marine spills, locate origins, and identify candidate sources.
+          </p>
+          <Link
+            to="/analysis"
+            className="inline-flex items-center gap-2 rounded bg-primary px-5 py-2.5 text-xs font-mono font-semibold text-primary-foreground mt-4"
+          >
+            Launch Investigation
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
       </div>
     );
   }
 
   const report = activeReport;
-  const { spill, origin, candidates, anomalies, outcome } = report;
+  const { spill, origin, candidates, anomalies, outcome, backward, forward } =
+    report;
   const topCandidate = candidates[0] ?? null;
-  const noSpill = outcome === "NO_SPILL_DETECTED" || outcome === "ANALYSIS_INCONCLUSIVE" || !spill;
+  const incidentLabel = getIncidentLabel(report);
+  const isSpillDetected = outcome === "SPILL_DETECTED" && !!spill;
+  const isNoSpill = outcome === "NO_SPILL_DETECTED";
+  const isDemo = report.mode === "DEMO" || !report.mode;
 
-  // Build spill polygon path from the detection geometry.
+  // Build spill polygon path
   const spillCoords: [number, number][] =
     spill?.geometry.coordinates[0]?.map(([lon, lat]) => [lon, lat]) ?? [];
   const hasPolygon = spillCoords.length > 0;
   const spillD = hasPolygon
     ? spillCoords
-        .map(([lon, lat], i) => `${i ? "L" : "M"}${project(lon, lat).join(" ")}`)
+        .map(
+          ([lon, lat], i) =>
+            `${i ? "L" : "M"}${project(lon, lat).join(" ")}`,
+        )
         .join(" ") + " Z"
     : "";
 
-  // Drift path (hindcast backward trajectory).
-  const driftPath = report.backward ?? [];
+  const driftPath = backward ?? [];
   const hasDrift = driftPath.length > 0;
 
-  // Map center: prefer spill centroid, then origin, then scene center.
   const mapCenter: [number, number] = spill
     ? [spill.metrics.centroid.lon, spill.metrics.centroid.lat]
     : origin
@@ -84,246 +134,444 @@ function OverviewPage() {
           ]
         : [72.45, 15.25];
 
+  // Pipeline stages: Detection -> Drift -> AIS Correlation -> Attribution
+  const pipelineSteps = [
+    {
+      stage: "Detection",
+      label: "Satellite Spill Detection",
+      icon: Radar,
+      status: spill ? ("completed" as const) : isNoSpill ? ("completed" as const) : ("inconclusive" as const),
+      statusBadge: spill ? "Completed" : isNoSpill ? "Clean (Completed)" : "Inconclusive",
+      result: spill
+        ? `Candidate spill identified (${spill.metrics.areaKm2} km², ${(spill.confidence * 100).toFixed(0)}% confidence)`
+        : isNoSpill
+          ? "No dark-slick detected above backscatter threshold"
+          : "SAR imagery classification inconclusive",
+    },
+    {
+      stage: "Drift",
+      label: "Hydrodynamic Drift & Origin",
+      icon: Compass,
+      status: origin
+        ? ("completed" as const)
+        : hasDrift
+          ? ("completed" as const)
+          : isNoSpill
+            ? ("not_assessed" as const)
+            : ("unavailable" as const),
+      statusBadge: origin ? "Completed" : hasDrift ? "Completed" : isNoSpill ? "Not Assessed" : "Unavailable",
+      result: origin
+        ? `Origin region computed at ${origin.lat.toFixed(3)}°N, ${origin.lon.toFixed(3)}°E (±${origin.uncertaintyKm} km)`
+        : hasDrift
+          ? `Drift trajectory computed (${driftPath.length} steps)`
+          : isNoSpill
+            ? "Drift analysis skipped — clean sea surface"
+            : "Hydrodynamic advection data unavailable",
+    },
+    {
+      stage: "AIS Correlation",
+      label: "Spatiotemporal AIS Correlation",
+      icon: Ship,
+      status: candidates.length > 0
+        ? ("completed" as const)
+        : isNoSpill
+          ? ("not_assessed" as const)
+          : ("incomplete" as const),
+      statusBadge: candidates.length > 0 ? "Completed" : isNoSpill ? "Not Assessed" : "No Candidates",
+      result:
+        candidates.length > 0
+          ? `${candidates.length} candidate vessel${candidates.length !== 1 ? "s" : ""} correlated with release corridor`
+          : isNoSpill
+            ? "Vessel correlation skipped — clean sea surface"
+            : "No compatible vessels found within spatio-temporal window",
+    },
+    {
+      stage: "Attribution",
+      label: "Source Attribution & Ranking",
+      icon: Users,
+      status: topCandidate
+        ? ("completed" as const)
+        : isNoSpill
+          ? ("not_assessed" as const)
+          : ("inconclusive" as const),
+      statusBadge: topCandidate ? "Completed" : isNoSpill ? "Not Assessed" : "Inconclusive",
+      result: topCandidate
+        ? `Leading source candidate: ${topCandidate.name} (Score: ${topCandidate.score}/100)`
+        : isNoSpill
+          ? "Attribution not required"
+          : "Source attribution inconclusive from current evidence",
+    },
+  ];
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="space-y-6">
+      {/* 1. OPERATIONAL OVERVIEW HEADER & SUMMARY */}
+      <div className="space-y-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Operations overview</h1>
-          <p className="text-sm text-muted-foreground">
-            {report.mode} analysis · report {report.id.slice(0, 12)} · {report.status}
+          <div className="flex items-center gap-2 text-xs font-mono text-[var(--accent-blue)] uppercase tracking-wider mb-1">
+            <LayoutDashboard className="h-3.5 w-3.5" />
+            <span>Maritime Intelligence &middot; Situational Awareness</span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Operational Overview
+          </h1>
+          <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">
+            {isSpillDetected
+              ? `Active oil slick detected in Sentinel-1 SAR imagery with ${report.forecastHours}h hydrodynamic drift analysis and AIS vessel correlation.`
+              : isNoSpill
+                ? "Sentinel-1 SAR scene analyzed with verified clean surface conditions. No oil slick detected above threshold."
+                : "Sentinel-1 SAR acquisition analyzed with inconclusive classification due to environmental backscatter characteristics."}
           </p>
         </div>
-        <StatusDot label={`${report.outcome ?? report.status}`} />
+
+        {/* Incident Summary Card */}
+        <div className="rounded border border-border bg-card p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2.5 mb-1">
+                <h2 className="text-lg font-bold tracking-tight text-foreground font-mono">
+                  {incidentLabel}
+                </h2>
+                {isDemo && (
+                  <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-mono font-semibold uppercase text-amber-300">
+                    Synthetic Demo
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {spill
+                    ? `${spill.metrics.centroid.lat.toFixed(3)}°N, ${spill.metrics.centroid.lon.toFixed(3)}°E`
+                    : report.scene.bbox
+                      ? `${((report.scene.bbox[1] + report.scene.bbox[3]) / 2).toFixed(3)}°N, ${((report.scene.bbox[0] + report.scene.bbox[2]) / 2).toFixed(3)}°E`
+                      : "Location unavailable"}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {utc(report.scene.acquiredAt)}
+                </span>
+                <span>
+                  Source: <strong className="text-foreground">{report.scene.source}</strong>
+                </span>
+                {report.scene.polarization && (
+                  <span>
+                    Pol: <strong className="text-foreground">{String(report.scene.polarization)}</strong>
+                  </span>
+                )}
+              </div>
+            </div>
+            <OutcomeBadge outcome={outcome ?? report.status} />
+          </div>
+
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="rounded border border-border bg-secondary/40 p-3 space-y-1">
+              <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-mono block">
+                Spill Area
+              </span>
+              <span className="text-base font-bold text-foreground tabular-nums font-mono">
+                {spill ? `${spill.metrics.areaKm2} km²` : isNoSpill ? "No spill detected" : "Inconclusive"}
+              </span>
+              <span className="text-[9px] text-muted-foreground block font-mono">
+                {spill ? `${spill.metrics.lengthM.toFixed(0)}m × ${spill.metrics.widthM.toFixed(0)}m` : "SAR segmentation"}
+              </span>
+            </div>
+            <div className="rounded border border-border bg-secondary/40 p-3 space-y-1">
+              <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-mono block">
+                Estimated Age
+              </span>
+              <span className="text-base font-bold text-foreground tabular-nums font-mono">
+                {report.age
+                  ? `${report.age.minHours}–${report.age.maxHours}h`
+                  : isNoSpill
+                    ? "Not applicable"
+                    : "Not assessed"}
+              </span>
+              <span className="text-[9px] text-muted-foreground block font-mono">
+                {report.age ? `${report.age.confidence} confidence` : "Morphological window"}
+              </span>
+            </div>
+            <div className="rounded border border-border bg-secondary/40 p-3 space-y-1">
+              <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-mono block">
+                Confidence
+              </span>
+              <span className="text-base font-bold text-foreground tabular-nums font-mono">
+                {spill
+                  ? `${(spill.confidence * 100).toFixed(0)}%`
+                  : isNoSpill
+                    ? "High (Clean)"
+                    : "Inconclusive"}
+              </span>
+              <span className="text-[9px] text-muted-foreground block font-mono">
+                {spill?.confidenceMeaning ?? "Classification quality"}
+              </span>
+            </div>
+            <div className="rounded border border-border bg-secondary/40 p-3 space-y-1">
+              <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-mono block">
+                Estimated Origin
+              </span>
+              <span className="text-xs font-bold text-foreground font-mono truncate block">
+                {origin
+                  ? `${origin.lat.toFixed(3)}°N, ${origin.lon.toFixed(3)}°E`
+                  : isNoSpill
+                    ? "Not applicable"
+                    : "Unavailable"}
+              </span>
+              <span className="text-[9px] text-muted-foreground block font-mono">
+                {origin ? `Sensitivity: ±${origin.uncertaintyKm} km` : "Backtracked origin"}
+              </span>
+            </div>
+            <div className="rounded border border-border bg-secondary/40 p-3 space-y-1">
+              <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-mono block">
+                Candidate Vessels
+              </span>
+              <span className="text-base font-bold text-[var(--accent-blue)] tabular-nums font-mono">
+                {candidates.length > 0
+                  ? `${candidates.length} correlated`
+                  : isNoSpill
+                    ? "Not applicable"
+                    : "None identified"}
+              </span>
+              <span className="text-[9px] text-muted-foreground block truncate font-mono">
+                {topCandidate ? `Top: ${topCandidate.name}` : "AIS spatiotemporal"}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {noSpill && (
-        <div className="rounded border border-amber-400/40 bg-card/70 p-4 text-sm">
-          <strong>{outcome ?? report.status}</strong>
-          {report.outcomeMessage && <p className="mt-1">{report.outcomeMessage}</p>}
-          {report.outcomeReason && (
-            <p className="mt-1 text-xs text-muted-foreground">{report.outcomeReason}</p>
-          )}
-        </div>
-      )}
-
-      <Panel className="overflow-hidden">
+      {/* 2. MAIN MAP */}
+      <Panel
+        title="Incident Map"
+        action={
+          <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+            <span>
+              {spill
+                ? `${spill.metrics.centroid.lat.toFixed(2)}°N, ${spill.metrics.centroid.lon.toFixed(2)}°E`
+                : "Arabian Sea Sector"}
+            </span>
+          </div>
+        }
+      >
         <OceanMap
-          height={430}
+          height={440}
           initialCenter={mapCenter}
+          initialZoom={1.4}
           legend={
-            <div className="space-y-1">
+            <div className="space-y-1.5 text-xs">
+              <div className="font-semibold text-foreground border-b border-border/50 pb-1">
+                MAP LAYERS
+              </div>
               {hasPolygon && (
-                <div>
-                  <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-cyan)]" />
-                  Detected slick
+                <div className="flex items-center gap-2">
+                  <span className="inline-block h-2 w-2 rounded bg-[var(--accent-blue)]" />
+                  <span>Detected Spill</span>
                 </div>
               )}
               {origin && (
-                <div>
-                  <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-amber)]" />
-                  Modeled origin
+                <div className="flex items-center gap-2">
+                  <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
+                  <span>Estimated Origin</span>
+                </div>
+              )}
+              {hasDrift && (
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3 border-t-2 border-dashed border-amber-400" />
+                  <span>Drift Path</span>
                 </div>
               )}
               {candidates.length > 0 && (
-                <div>
-                  <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[var(--accent-blue)]" />
-                  Candidate vessels
+                <div className="flex items-center gap-2">
+                  <span className="inline-block h-2 w-2 rounded-full bg-[var(--accent-blue)]" />
+                  <span>Vessel Positions ({candidates.length})</span>
                 </div>
               )}
             </div>
           }
         >
+          {/* Spill polygon */}
           {hasPolygon && (
             <path
               d={spillD}
-              fill="var(--accent-cyan)"
-              fillOpacity={0.16}
-              stroke="var(--accent-cyan)"
-              strokeWidth={1.6}
+              fill="var(--accent-blue)"
+              fillOpacity={0.2}
+              stroke="var(--accent-blue)"
+              strokeWidth={1.8}
             />
           )}
+          {/* Drift path */}
           {hasDrift && (
             <path
               d={pathFrom(driftPath.map((p) => [p.lon, p.lat]))}
               fill="none"
               stroke="var(--accent-amber)"
-              strokeWidth={1.4}
+              strokeWidth={1.6}
               strokeDasharray="6 5"
-              opacity={0.8}
+              opacity={0.85}
             />
           )}
-          {origin &&
-            (() => {
-              const [ox, oy] = project(origin.lon, origin.lat);
-              return (
-                <g>
-                  <circle cx={ox} cy={oy} r={6} fill="var(--accent-amber)" opacity={0.8} />
-                  <text x={ox + 8} y={oy + 4} fontSize={10} fill="var(--accent-amber)">
-                    Modeled origin
-                  </text>
-                </g>
-              );
-            })()}
-          {candidates.map((c, i) => {
-            const colors = ["var(--accent-blue)", "var(--accent-cyan)", "#a78bfa"];
+          {/* Origin marker */}
+          {origin && (
+            <Marker
+              lon={origin.lon}
+              lat={origin.lat}
+              color="var(--accent-amber)"
+              label="Estimated Origin"
+            />
+          )}
+          {/* Spill centroid */}
+          {spill && (
+            <Marker
+              lon={spill.metrics.centroid.lon}
+              lat={spill.metrics.centroid.lat}
+              label="Detected Spill"
+              pulse
+            />
+          )}
+          {/* Vessel positions */}
+          {candidates.map((c) => {
             const last = c.track[c.track.length - 1];
             if (!last) return null;
-            const [x, y] = project(last.longitude, last.latitude);
             return (
               <g key={c.mmsi}>
                 <path
-                  d={pathFrom(c.track.map((p) => [p.longitude, p.latitude]))}
+                  d={pathFrom(
+                    c.track.map((p) => [p.longitude, p.latitude]),
+                  )}
                   fill="none"
-                  stroke={colors[i % colors.length]}
+                  stroke="#475569"
                   strokeWidth={1}
                   opacity={0.5}
                 />
-                <circle cx={x} cy={y} r={4} fill={colors[i % colors.length]} opacity={0.8}>
-                  <title>
-                    {c.name} · MMSI {c.mmsi}
-                  </title>
-                </circle>
+                <Marker
+                  lon={last.longitude}
+                  lat={last.latitude}
+                  color="#94a3b8"
+                  label={`${c.name} (${c.score}/100)`}
+                />
               </g>
             );
           })}
         </OceanMap>
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          {candidates.length > 0
-            ? `${candidates.length} candidate vessel(s) identified. Click Suspects tab for attribution detail.`
-            : noSpill
-              ? "No spill detected — vessel attribution not performed."
-              : "Vessel correlation pending or unavailable for this analysis."}
-        </p>
       </Panel>
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <Panel title="Detection summary">
-          {spill ? (
-            <div className="grid grid-cols-2 gap-4">
-              <Stat label="Area" value={`${spill.metrics.areaKm2} km²`} hint="SAR derived" />
-              <Stat
-                label="Confidence"
-                value={`${(spill.confidence * 100).toFixed(1)} / 100`}
-                hint="Dark-slick index"
-              />
-              {report.age && (
-                <Stat
-                  label="Estimated age"
-                  value={`${report.age.minHours}–${report.age.maxHours} h`}
-                  hint={report.age.confidence}
-                />
-              )}
-              <Stat label="Mode" value={report.mode ?? "DEMO"} hint={report.status} />
-            </div>
-          ) : (
-            <div className="py-4 text-center">
-              <p className="text-sm font-medium">{outcome ?? report.status}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {report.outcomeMessage ?? "No spill candidate detected in this scene."}
-              </p>
-            </div>
-          )}
-          <p className="mt-3 text-[11px] text-muted-foreground">
-            Scene: {report.scene.source} · acquired {utc(report.scene.acquiredAt)}
-          </p>
-        </Panel>
+      {/* 3. PIPELINE STATUS */}
+      <div className="rounded border border-border bg-card p-5">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground font-mono mb-4">
+          What O.S.I.S. Found
+        </h2>
+        <div className="space-y-0">
+          {pipelineSteps.map((step, i) => {
+            const Icon = step.icon;
+            const isCompleted = step.status === "completed";
+            const isUnavailable = step.status === "unavailable";
+            const isInconclusive = step.status === "inconclusive";
+            const isIncomplete = step.status === "incomplete";
 
-        <Panel title="Modeled origin">
-          {origin ? (
-            <>
-              <KeyVal k="Position" v={`${origin.lat.toFixed(5)}° N, ${origin.lon.toFixed(5)}° E`} />
-              <KeyVal k="Uncertainty" v={`${origin.uncertaintyKm} km radius`} />
-              <KeyVal
-                k="Release window"
-                v={`${utc(origin.releaseWindow.start).slice(11)} – ${utc(origin.releaseWindow.end).slice(11)}`}
-              />
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Sensitivity radius, not a calibrated uncertainty. Hindcast model only.
-              </p>
-            </>
-          ) : (
-            <div className="py-6 text-center">
-              <div className="text-sm font-medium text-foreground">
-                {noSpill ? "No spill — origin not modeled" : "Modeled origin unavailable"}
-              </div>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                {noSpill
-                  ? "Drift backtracking is not performed when no spill is detected."
-                  : "Origin hindcast was not computed for this report."}
-              </p>
-            </div>
-          )}
-          <Link
-            to="/backtracking"
-            className="mt-4 inline-flex rounded-md border border-border px-3 py-1.5 text-xs transition-colors hover:border-primary/60 hover:text-primary"
-          >
-            Open drift backtracking
-          </Link>
-        </Panel>
+            const statusColor = isCompleted
+              ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+              : isUnavailable
+                ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
+                : isInconclusive
+                  ? "text-amber-400 border-amber-500/30 bg-amber-500/10"
+                  : isIncomplete
+                    ? "text-muted-foreground border-border bg-secondary/50"
+                    : "text-muted-foreground border-border bg-secondary/40";
 
-        <Panel title="Top suspect vessel">
-          {topCandidate ? (
-            <>
-              <div className="text-base font-medium">{topCandidate.name}</div>
-              <div className="text-[11px] text-muted-foreground">
-                {topCandidate.type} · MMSI {topCandidate.mmsi}
-              </div>
-              <div className="mt-3 text-3xl font-semibold tabular-nums text-[var(--accent-cyan)]">
-                {topCandidate.score}
-                <span className="ml-1 text-sm text-muted-foreground">/ 100</span>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Compatibility score — not legal attribution. {topCandidate.confidence} confidence.
-              </p>
-              <Link
-                to="/suspects"
-                className="mt-4 inline-flex rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
-              >
-                View attribution
-              </Link>
-            </>
-          ) : (
-            <>
-              <div className="py-6 text-center">
-                <div className="text-sm font-medium text-foreground">
-                  {noSpill ? "No attribution generated" : "No candidate vessels identified"}
+            const statusIcon = isCompleted ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            ) : isUnavailable || isInconclusive ? (
+              <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+            ) : (
+              <HelpCircle className="h-4 w-4 text-muted-foreground shrink-0" />
+            );
+
+            return (
+              <div key={step.stage}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3 border-b border-border/50 last:border-b-0">
+                  <div className="flex items-center gap-3">
+                    {statusIcon}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-foreground">
+                          {step.label}
+                        </span>
+                        <span className={`rounded px-1.5 py-0.2 text-[9px] font-mono uppercase tracking-wider border ${statusColor}`}>
+                          {step.statusBadge}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {step.result}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {noSpill
-                    ? "Vessel correlation is not performed when no spill is detected."
-                    : "No AIS-correlated vessels met the spatial/temporal criteria."}
-                </p>
               </div>
-              <Link
-                to="/suspects"
-                className="mt-4 inline-flex rounded-md border border-border px-3 py-1.5 text-xs transition-colors hover:border-primary/60 hover:text-primary"
-              >
-                Open suspect ranking
-              </Link>
-            </>
-          )}
-        </Panel>
+            );
+          })}
+        </div>
       </div>
 
-      {/* AIS anomalies summary */}
-      {anomalies.length > 0 && (
-        <Panel title="AIS discontinuities detected">
-          <p className="mb-2 text-xs text-muted-foreground">
-            Unobserved intervals in candidate tracks — not proof of intentional disabling.
+      {/* 4. QUICK NAVIGATION CARDS */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Link
+          to="/satellite"
+          className="rounded border border-border bg-card p-4 space-y-2 hover:border-[var(--primary)]/50 transition-colors group"
+        >
+          <div className="flex items-center justify-between">
+            <Radar className="h-4 w-4 text-[var(--accent-blue)]" />
+            <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </div>
+          <h3 className="text-sm font-semibold text-foreground">Detection</h3>
+          <p className="text-[11px] text-muted-foreground">
+            SAR imagery analysis &amp; spill geometry
           </p>
-          {anomalies.slice(0, 3).map((a, i) => (
-            <div key={i} className="border-t border-border/50 py-1.5 text-xs">
-              <span className="font-mono">{a.mmsi}</span> · {a.durationHours} h unobserved ·{" "}
-              {a.label}
-            </div>
-          ))}
-          {anomalies.length > 3 && (
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              + {anomalies.length - 3} more — see AIS tab for full list.
-            </p>
-          )}
-        </Panel>
-      )}
+        </Link>
+        <Link
+          to="/backtracking"
+          className="rounded border border-border bg-card p-4 space-y-2 hover:border-[var(--primary)]/50 transition-colors group"
+        >
+          <div className="flex items-center justify-between">
+            <Compass className="h-4 w-4 text-amber-400" />
+            <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </div>
+          <h3 className="text-sm font-semibold text-foreground">Drift Analysis</h3>
+          <p className="text-[11px] text-muted-foreground">
+            Backward origin estimation &amp; forward prediction
+          </p>
+        </Link>
+        <Link
+          to="/ais"
+          className="rounded border border-border bg-card p-4 space-y-2 hover:border-[var(--primary)]/50 transition-colors group"
+        >
+          <div className="flex items-center justify-between">
+            <Ship className="h-4 w-4 text-[var(--accent-blue)]" />
+            <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Vessel Attribution
+          </h3>
+          <p className="text-[11px] text-muted-foreground">
+            AIS correlation &amp; candidate ranking
+          </p>
+        </Link>
+        <Link
+          to="/analysis"
+          className="rounded border border-border bg-card p-4 space-y-2 hover:border-[var(--primary)]/50 transition-colors group"
+        >
+          <div className="flex items-center justify-between">
+            <Layers className="h-4 w-4 text-emerald-400" />
+            <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Full Investigation
+          </h3>
+          <p className="text-[11px] text-muted-foreground">
+            Complete evidence report &amp; technical details
+          </p>
+        </Link>
+      </div>
     </div>
   );
 }

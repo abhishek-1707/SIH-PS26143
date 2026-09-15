@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { OceanMap, pathFrom, project } from "../components/OceanMap";
+import { OceanMap, pathFrom, project, Marker } from "../components/OceanMap";
 import { SARUpload } from "../components/SARUpload";
 import { useIncident } from "../context/IncidentContext";
+import { KeyVal, Meter, Modal, OutcomeBadge, Panel, Stat, StatusDot } from "../components/ui-kit";
+import { getIncidentLabel } from "../api/incidents";
 import {
   analyzeIncident,
   getIncident,
@@ -11,16 +13,28 @@ import {
   type IncidentReport,
   type Position,
 } from "../api/incidents";
+import {
+  Layers,
+  CheckCircle2,
+  AlertTriangle,
+  HelpCircle,
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  ShieldAlert,
+  Radar,
+  Compass,
+  Ship,
+  Users,
+  Download,
+  Settings,
+  Info,
+} from "lucide-react";
 
-export const Route = createFileRoute("/analysis")({ component: AnalysisPage });
-const colors = ["#22d3ee", "#a78bfa", "#fbbf24"];
-const layers = ["SAR", "Spills", "Origin", "Hindcast", "Forecast", "Vessels", "AIS gaps"] as const;
-type Layer = (typeof layers)[number];
-const button =
-  "rounded border border-border px-3 py-2 text-sm hover:border-primary disabled:opacity-40";
-const panel = "rounded-lg border border-border bg-card/70 p-4";
-const pointsPath = (points: Position[]) => pathFrom(points.map((p) => [p.lon, p.lat]));
+export const Route = createFileRoute("/analysis")({ component: InvestigationPage });
+const colors = ["var(--accent-blue)", "#94a3b8", "#f59e0b"];
 const utc = (time: string) => time.replace("T", " ").replace("Z", " UTC");
+const pointsPath = (points: Position[]) => pathFrom(points.map((p) => [p.lon, p.lat]));
 
 function Raster({ report, onImage }: { report: IncidentReport; onImage: (url: string) => void }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -49,23 +63,33 @@ function Raster({ report, onImage }: { report: IncidentReport; onImage: (url: st
       ref={ref}
       className="w-full rounded bg-secondary"
       style={{ imageRendering: "pixelated" }}
-      aria-label={`${report.mode === "UPLOAD" ? "User-provided" : report.mode === "REAL" ? "Archived real" : "Synthetic"} SAR backscatter preview`}
+      aria-label="SAR backscatter preview"
     />
   );
 }
 
 export function ReportView({ report }: { report: IncidentReport }) {
-  const [enabled, setEnabled] = useState<Layer[]>([...layers]);
+  return <InvestigationReport report={report} />;
+}
+
+/** The main investigation report view — evaluator-first layout */
+function InvestigationReport({ report }: { report: IncidentReport }) {
   const [image, setImage] = useState("");
   const [selected, setSelected] = useState(report.leadingCandidate);
-  const has = (layer: Layer) => enabled.includes(layer);
-  const { spill, origin, age } = report;
-  const candidate = report.candidates.find((c) => c.mmsi === selected);
+  const { spill, origin, age, candidates, anomalies, outcome } = report;
+  const topCandidate = candidates[0] ?? null;
+  const isDemo = report.mode === "DEMO" || !report.mode;
+
+  // Map setup
   const [west, south, east, north] = report.scene.bbox ?? [72.3, 15.1, 72.6, 15.4];
   const [sx, sy] = project(west, north);
   const [ex, ey] = project(east, south);
-  const [ox, oy] = origin ? project(origin.lon, origin.lat) : [0, 0];
-  const [cx, cy] = spill ? project(spill.metrics.centroid.lon, spill.metrics.centroid.lat) : [0, 0];
+  const mapCenter: [number, number] = spill
+    ? [spill.metrics.centroid.lon, spill.metrics.centroid.lat]
+    : origin
+      ? [origin.lon, origin.lat]
+      : [(west + east) / 2, (south + north) / 2];
+
   const exportReport = () => {
     const url = URL.createObjectURL(
       new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
@@ -76,141 +100,171 @@ export function ReportView({ report }: { report: IncidentReport }) {
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+
+  // Assessment label
+  const assessmentLabel = outcome === "SPILL_DETECTED" && topCandidate
+    ? "CANDIDATE SOURCE IDENTIFIED"
+    : outcome === "NO_SPILL_DETECTED"
+      ? "NO SPILL DETECTED"
+      : outcome === "ANALYSIS_INCONCLUSIVE"
+        ? "ANALYSIS INCONCLUSIVE"
+        : "INVESTIGATION COMPLETE";
+
+  const assessmentColor = outcome === "SPILL_DETECTED"
+    ? "border-rose-500/40 bg-rose-500/5"
+    : outcome === "NO_SPILL_DETECTED"
+      ? "border-emerald-500/40 bg-emerald-500/5"
+      : "border-amber-500/40 bg-amber-500/5";
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">
-            {report.mode ?? "DEMO"} · {report.status} incident report
-          </h2>
-          <p className="text-xs text-muted-foreground break-all">
-            {report.id} · image {utc(report.scene.acquiredAt)}
-          </p>
+    <div className="space-y-5">
+      {/* 1. ASSESSMENT BANNER */}
+      <div className={`rounded border p-5 ${assessmentColor}`}>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <h2 className="text-lg font-bold text-foreground font-mono tracking-tight">
+                {assessmentLabel}
+              </h2>
+              {isDemo && (
+                <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-mono font-semibold uppercase text-amber-300">
+                  Demo
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground max-w-xl">
+              O.S.I.S. combines satellite evidence, drift modelling and AIS vessel correlation
+              to identify potential spill sources. {report.outcomeMessage ?? ""}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <OutcomeBadge outcome={outcome ?? report.status} />
+            <button
+              onClick={exportReport}
+              className="rounded border border-border bg-secondary px-3 py-1.5 text-xs font-mono text-foreground hover:bg-secondary/80 transition-colors cursor-pointer"
+            >
+              <Download className="h-3 w-3 inline mr-1" />
+              Download report JSON
+            </button>
+          </div>
         </div>
-        <button className={button} onClick={exportReport}>
-          Download report JSON
-        </button>
       </div>
-      <p className="rounded border border-amber-400/40 p-3 text-sm text-amber-200">
-        {report.disclaimer}
-      </p>
-      <section className={panel} role="status" aria-label="Analysis outcome">
-        <h3 className="font-semibold">
-          {report.outcome ?? (spill ? "SPILL_DETECTED" : "ANALYSIS_INCONCLUSIVE")}
-        </h3>
-        <p>{report.outcomeMessage}</p>
-        <p>{report.outcomeReason}</p>
+
+      {/* Analysis outcome status card */}
+      <section className="rounded border border-border/70 bg-card/60 p-4 text-xs font-mono space-y-1.5" role="status" aria-label="Analysis outcome">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-foreground">
+            {report.outcome ?? (spill ? "SPILL_DETECTED" : "ANALYSIS_INCONCLUSIVE")}
+          </h3>
+          <span className="text-muted-foreground">{report.status}</span>
+        </div>
+        {report.outcomeMessage && <p className="text-muted-foreground">{report.outcomeMessage}</p>}
+        {report.outcomeReason && <p className="text-muted-foreground/80 italic">{report.outcomeReason}</p>}
         {report.availability === "REAL_DATA_UNAVAILABLE" && (
-          <p>
-            REAL_DATA_UNAVAILABLE · Use DEMO, upload compatible SAR, or configure the required
-            real-data access.
+          <p className="text-amber-400">
+            REAL_DATA_UNAVAILABLE · Use DEMO, upload compatible SAR, or configure the required real-data access.
           </p>
         )}
-        <p className="text-xs">
-          Processing timestamp: {utc(report.processedAt ?? report.detectedAt)} · Source:{" "}
-          {report.scene.source}
+        <p className="text-xs text-muted-foreground">
+          Processing timestamp: {utc(report.processedAt ?? report.detectedAt)} · Source: {report.scene.source}
         </p>
-        <p className="text-xs">
+        <p className="text-xs text-muted-foreground">
           {report.scene.bbox
-            ? `Analyzed bounds: ${report.scene.bbox.join(", ")}`
+            ? `Analyzed bounds: [${report.scene.bbox.join(", ")}]`
             : "Scene location unavailable. Map is contextual only; no analyzed footprint claimed."}
         </p>
-        <p className="text-xs">
-          Detector: {report.detector?.name ?? "unavailable"} ·{" "}
-          {report.detector?.version ?? "version unavailable"} · {report.detector?.status}
-        </p>
-        {report.detector?.quality && (
-          <pre className="overflow-auto text-xs">
-            {JSON.stringify(report.detector.quality, null, 2)}
-          </pre>
-        )}
       </section>
+
+      {/* Stage Status & Evidence availability */}
       {report.stageStatus && (
-        <section className={panel} aria-label="Evidence availability">
-          <h3 className="mb-2 font-medium">Evidence availability · no synthetic substitution</h3>
-          {Object.entries(report.stageStatus).map(([name, stage]) => (
-            <p key={name} className="mb-2 text-xs">
-              <strong>
-                {name}: {stage.status} · {stage.kind}
-              </strong>{" "}
-              — {stage.reason}
-            </p>
-          ))}
-          <p className="text-sm">
+        <section className="rounded border border-border/70 bg-card/60 p-4 text-xs font-mono space-y-2" aria-label="Evidence availability">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-foreground">Evidence availability · no synthetic substitution</h3>
+            <span className="text-[10px] text-muted-foreground uppercase">{report.mode ?? "DEMO"}</span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {Object.entries(report.stageStatus).map(([name, stage]) => (
+              <div key={name} className="rounded bg-secondary/30 p-2 text-xs border border-border/40">
+                <span className="font-bold text-foreground capitalize">{name}: </span>
+                <span className="text-muted-foreground">{stage.status} · {stage.kind}</span>
+                <p className="text-[11px] text-muted-foreground/90 mt-0.5">{stage.reason}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground pt-1 border-t border-border/30">
             {report.mode === "DEMO"
               ? "Synthetic exercise; no real observations claimed."
               : `Hindcast scenario: ${report.hindcastHours}h before image time; AIS search ±1h. Not measured spill age.`}
           </p>
         </section>
       )}
-      <div className="grid gap-3 sm:grid-cols-4">
-        <div className={panel}>
-          <p className="text-xs text-muted-foreground">Detected envelope</p>
-          <strong>{spill ? `${spill.metrics.areaKm2} km²` : "Unavailable"}</strong>
-          <p className="text-xs">{report.detections.length} dark slick candidates</p>
+
+      {/* 2. KEY FINDINGS */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="rounded border border-border bg-card p-3 space-y-1">
+          <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-mono block">Spill Detected</span>
+          <span className="text-sm font-bold text-foreground font-mono">{spill ? "Yes" : "No"}</span>
         </div>
-        <div className={panel}>
-          <p className="text-xs text-muted-foreground">Estimated age</p>
-          <strong>{age ? `${age.minHours}–${age.maxHours} hours` : "Unavailable"}</strong>
-          <p className="text-xs">
-            {age ? `${age.confidence} confidence` : "Single image cannot date release"}
-          </p>
+        <div className="rounded border border-border bg-card p-3 space-y-1">
+          <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-mono block">Spill Area</span>
+          <span className="text-sm font-bold text-foreground font-mono tabular-nums">{spill ? `${spill.metrics.areaKm2} km²` : "—"}</span>
         </div>
-        <div className={panel}>
-          <p className="text-xs text-muted-foreground">Dark-slick index (not oil probability)</p>
-          <strong>{spill ? `${(spill.confidence * 100).toFixed(1)} / 100` : "Unavailable"}</strong>
+        <div className="rounded border border-border bg-card p-3 space-y-1">
+          <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-mono block" title="Approximate interval based on available observations">Est. Observation Age</span>
+          <span className="text-sm font-bold text-foreground font-mono tabular-nums">{age ? `${age.minHours}–${age.maxHours}h` : "—"}</span>
         </div>
-        <div className={panel}>
-          <p className="text-xs text-muted-foreground">Leading candidate</p>
-          <strong>{report.candidates[0]?.name ?? "None"}</strong>
-          <p className="text-xs">Compatibility, not legal responsibility</p>
+        <div className="rounded border border-border bg-card p-3 space-y-1">
+          <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-mono block">Origin Region</span>
+          <span className="text-xs font-bold text-foreground font-mono">{origin ? `${origin.lat.toFixed(3)}°N` : "—"}</span>
+        </div>
+        <div className="rounded border border-border bg-card p-3 space-y-1">
+          <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-mono block">Top Vessel</span>
+          <span className="text-xs font-bold text-foreground font-mono truncate block">{topCandidate?.name ?? "—"}</span>
+        </div>
+        <div className="rounded border border-border bg-card p-3 space-y-1">
+          <span className="text-[10px] uppercase text-muted-foreground tracking-wider font-mono block">Attribution Score</span>
+          <span className="text-sm font-bold text-foreground font-mono tabular-nums">{topCandidate ? `${topCandidate.score}/100` : "—"}</span>
         </div>
       </div>
-      <section className={panel}>
-        <h3 className="mb-3 font-medium">Incident map · drag to pan, scroll or buttons to zoom</h3>
-        <div className="mb-3 flex flex-wrap gap-4">
-          {layers.map((layer) => (
-            <label className="text-xs" key={layer}>
-              <input
-                type="checkbox"
-                checked={has(layer)}
-                onChange={() =>
-                  setEnabled((current) =>
-                    current.includes(layer)
-                      ? current.filter((l) => l !== layer)
-                      : [...current, layer],
-                  )
-                }
-              />{" "}
-              {layer}
-            </label>
-          ))}
-        </div>
+
+      {/* 3. EVIDENCE MAP */}
+      <Panel title="Evidence Map">
         <OceanMap
           key={report.id}
-          height={510}
+          height={480}
           initialZoom={1.4}
-          initialCenter={
-            report.mode !== "DEMO" ? [(west + east) / 2, (south + north) / 2] : undefined
-          }
+          initialCenter={mapCenter}
           legend={
-            <span>
-              Orange: hindcast · cyan: forecast · pink: detection · dashed red: unobserved AIS gap
-            </span>
+            <div className="space-y-1.5 text-xs">
+              <div className="font-semibold text-foreground border-b border-border/50 pb-1">
+                EVIDENCE LAYERS
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-[#fb7185]" />
+                <span>Spill Detection</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
+                <span>Estimated Origin</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-3 border-t-2 border-dashed border-[#fb923c]" />
+                <span>Backward Drift</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-3 border-t-2 border-[#22d3ee]" />
+                <span>Forward Forecast</span>
+              </div>
+            </div>
           }
         >
           <defs>
-            <marker
-              id="forecast-arrow"
-              markerWidth="6"
-              markerHeight="6"
-              refX="5"
-              refY="3"
-              orient="auto"
-            >
+            <marker id="forecast-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
               <path d="M0,0 L6,3 L0,6" fill="#22d3ee" />
             </marker>
           </defs>
+
+          {/* Analyzed scene footprint rect */}
           {report.scene.bbox && (
             <rect
               aria-label="Analyzed scene footprint"
@@ -226,339 +280,396 @@ export function ReportView({ report }: { report: IncidentReport }) {
               <title>Analyzed scene footprint</title>
             </rect>
           )}
-          {has("SAR") && image && (
-            <image href={image} x={sx} y={sy} width={ex - sx} height={ey - sy} opacity={0.8} />
-          )}
-          {has("Spills") &&
-            report.detections.map((d, i) => (
-              <path
-                key={i}
-                d={`${pathFrom(d.geometry.coordinates[0] ?? [])} Z`}
-                fill="#fb718566"
-                stroke="#fb7185"
-                strokeWidth={2}
-              >
-                <title>{`Candidate ${i + 1}: ${d.metrics.areaKm2} km²`}</title>
-              </path>
-            ))}
-          {has("Origin") && origin && (
-            <g>
-              <ellipse
-                cx={ox}
-                cy={oy}
-                rx={(origin.uncertaintyKm / 111.32 / Math.cos((origin.lat * Math.PI) / 180)) * 1500}
-                ry={(origin.uncertaintyKm / 111.32) * 1500}
-                fill="#fbbf2420"
-                stroke="#fbbf24"
-                strokeDasharray="5 4"
-              />
-              <circle cx={ox} cy={oy} r={5} fill="#fbbf24" />
-              <text x={ox + 9} y={oy - 10} fontSize={11} fill="#fbbf24">
-                Modeled origin
-              </text>
-            </g>
-          )}
-          {has("Hindcast") && (
+
+          {/* Spill polygons */}
+          {report.detections.map((d, i) => (
             <path
-              d={pointsPath(report.backward)}
-              fill="none"
-              stroke="#fb923c"
-              strokeWidth={3}
-              strokeDasharray="7 3"
-            />
-          )}
-          {has("Forecast") && (
-            <path
-              d={pointsPath(report.forward)}
-              fill="none"
-              stroke="#22d3ee"
+              key={i}
+              d={`${pathFrom(d.geometry.coordinates[0] ?? [])} Z`}
+              fill="#fb718566"
+              stroke="#fb7185"
               strokeWidth={2}
-              markerEnd="url(#forecast-arrow)"
-            />
+            >
+              <title>{`Candidate ${i + 1}: ${d.metrics.areaKm2} km²`}</title>
+            </path>
+          ))}
+
+          {/* Origin */}
+          {origin && (
+            <Marker lon={origin.lon} lat={origin.lat} color="var(--accent-amber)" label="Modeled Origin" />
           )}
-          {[
-            ...(has("Hindcast") ? report.backward : []),
-            ...(has("Forecast") ? report.forward.filter((_, i) => i % 6 === 0) : []),
-          ].map((p, i) => {
-            const [x, y] = project(p.lon, p.lat);
-            return (
-              <circle key={i} cx={x} cy={y} r={3} fill={p.hours < 0 ? "#fb923c" : "#22d3ee"}>
-                <title>
-                  {`${utc(p.timestamp)} · ${p.hours}h · sensitivity ±${p.uncertaintyKm}km`}
-                </title>
-              </circle>
-            );
-          })}
-          {has("Vessels") &&
-            report.candidates.map((c, i) => (
-              <g key={c.mmsi} onClick={() => setSelected(c.mmsi)} style={{ cursor: "pointer" }}>
-                {c.trackSegments.map((segment, j) => (
-                  <path
-                    key={j}
-                    d={pathFrom(segment.map((p) => [p.longitude, p.latitude]))}
-                    fill="none"
-                    stroke={colors[i % colors.length]}
-                    strokeWidth={selected === c.mmsi ? 4 : 2}
-                    opacity={0.8}
-                  />
-                ))}
-                {c.track.map((p, j) => {
-                  const [x, y] = project(p.longitude, p.latitude);
-                  return (
-                    <circle key={j} cx={x} cy={y} r={3} fill={colors[i % colors.length]}>
-                      <title>{`${c.name} · ${utc(p.timestamp)} · ${p.speed.toFixed(1)} kn`}</title>
-                    </circle>
-                  );
-                })}
-              </g>
-            ))}
-          {has("AIS gaps") &&
-            report.anomalies.map((a, i) => (
-              <path
-                key={i}
-                d={pathFrom([
-                  [a.start.longitude, a.start.latitude],
-                  [a.end.longitude, a.end.latitude],
-                ])}
-                stroke="#f87171"
-                strokeWidth={3}
-                strokeDasharray="3 5"
-                fill="none"
-              >
-                <title>{`${a.durationHours} h unobserved corridor · ${a.label}`}</title>
-              </path>
-            ))}
-          {spill && (
-            <g>
-              <circle cx={cx} cy={cy} r={4} fill="#fff" />
-              <text x={cx + 8} y={cy + 14} fill="#fff" fontSize={11}>
-                Image-time candidate
-              </text>
+
+          {/* Backward drift */}
+          {report.backward.length > 0 && (
+            <path d={pointsPath(report.backward)} fill="none" stroke="#fb923c" strokeWidth={2.5} strokeDasharray="7 3" />
+          )}
+
+          {/* Forward forecast */}
+          {report.forward.length > 0 && (
+            <path d={pointsPath(report.forward)} fill="none" stroke="#22d3ee" strokeWidth={2} markerEnd="url(#forecast-arrow)" />
+          )}
+
+          {/* Vessel tracks */}
+          {candidates.map((c, i) => (
+            <g key={c.mmsi} onClick={() => setSelected(c.mmsi)} style={{ cursor: "pointer" }}>
+              {c.trackSegments.map((segment, j) => (
+                <path
+                  key={j}
+                  d={pathFrom(segment.map((p) => [p.longitude, p.latitude]))}
+                  fill="none"
+                  stroke={colors[i % colors.length]}
+                  strokeWidth={selected === c.mmsi ? 3 : 1.5}
+                  opacity={0.8}
+                />
+              ))}
             </g>
+          ))}
+
+          {/* AIS gaps */}
+          {anomalies.map((a, i) => (
+            <path
+              key={i}
+              d={pathFrom([
+                [a.start.longitude, a.start.latitude],
+                [a.end.longitude, a.end.latitude],
+              ])}
+              stroke="#f87171"
+              strokeWidth={2}
+              strokeDasharray="3 5"
+              fill="none"
+            >
+              <title>{`${a.durationHours}h unobserved corridor`}</title>
+            </path>
+          ))}
+
+          {/* Spill centroid */}
+          {spill && (
+            <Marker lon={spill.metrics.centroid.lon} lat={spill.metrics.centroid.lat} label="Detected Spill" pulse />
           )}
         </OceanMap>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Regional schematic coordinate map, not navigational cartography. Modeled trajectories
-          start at image time, not wall-clock time. Gap corridors are hypotheses, never observed
-          tracks.
-        </p>
-      </section>
-      <div className="grid gap-4 md:grid-cols-3">
-        <section className={panel}>
-          <h3 className="mb-2 font-medium">
-            SAR input ·{" "}
-            {report.mode === "UPLOAD"
-              ? "user-provided"
-              : report.mode === "REAL"
-                ? "real archived / on demand"
-                : "synthetic"}
+      </Panel>
+
+      {/* 4. SOURCE ATTRIBUTION */}
+      <div className="rounded border border-border bg-card p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-3">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground font-mono">
+            Source Attribution — Candidate Vessels
           </h3>
-          {report.scene.pixels.length ? (
-            <Raster report={report} onImage={setImage} />
-          ) : (
-            <p>Preview unavailable; see detection stage.</p>
-          )}
-          <p className="mt-2 text-xs">
-            {report.scene.width}×{report.scene.height} pixels · {String(report.scene.polarization)}{" "}
-            · {report.scene.resolution_m.map((n) => n.toFixed(1)).join("×")} m/native pixel
-            {report.scene.nativeWidth &&
-              ` · native ${report.scene.nativeWidth}×${report.scene.nativeHeight}; display subsampled 4×`}
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {report.mode === "REAL" || report.mode === "UPLOAD"
-              ? `Experimental ${report.detector?.name ?? "unavailable"} detector. Uncalibrated scores, not confirmed oil or probability of oil.`
-              : "Median speckle smoothing → dark-region threshold → connected components → convex envelope. Not a trained oil classifier."}
-          </p>
-        </section>
-        <section className={panel}>
-          <h3 className="mb-2 font-medium">Characterization &amp; age</h3>
-          {spill && (
-            <p className="text-sm">
-              Perimeter: {spill.metrics.perimeterM.toFixed(0)} m<br />
-              Length × width: {spill.metrics.lengthM.toFixed(0)} × {spill.metrics.widthM.toFixed(0)}{" "}
-              m
+          <span className="text-xs font-mono text-muted-foreground">
+            {candidates.length} candidate{candidates.length === 1 ? "" : "s"} evaluated
+          </span>
+        </div>
+
+        {candidates.length === 0 ? (
+          <div className="rounded border border-border/70 bg-secondary/20 p-4 text-xs font-mono text-muted-foreground space-y-1">
+            <p className="font-semibold text-foreground">
+              {report.stageStatus?.["ais"]?.status === "unavailable"
+                ? `AIS unavailable: ${report.stageStatus["ais"].reason}. No attribution generated.`
+                : "No observed vessel fixes met spatial/temporal criteria. No dark-slick candidates."}
             </p>
-          )}
-          <p className="mt-2 text-xs">{spill?.geometryMethod ?? "Characterization unavailable"}</p>
-          <p className="mt-2 text-xs">
-            {age?.method.replaceAll("_", " ") ?? "Spill age unavailable"}
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {age?.caveat ??
-              "Hindcast duration is an analyst-selected scenario, not an age estimate."}
-          </p>
-        </section>
-        <section className={panel}>
-          <h3 className="mb-2 font-medium">Origin &amp; environment</h3>
-          {origin ? (
-            <>
-              <p className="text-sm">
-                {origin.lat.toFixed(5)}° N, {origin.lon.toFixed(5)}° E
-              </p>
-              <p className="text-xs">
-                {utc(origin.releaseWindow.start)} → {utc(origin.releaseWindow.end)}
-              </p>
-              <p className="my-2 text-xs">
-                Origin sensitivity radius: {origin.uncertaintyKm} km · forecast{" "}
-                {report.forecastHours}h
-              </p>
-            </>
-          ) : (
-            <p className="text-sm">Modeled origin unavailable. No release location inferred.</p>
-          )}
-          {Object.entries(report.environment).map(([k, v]) => (
-            <p className="text-xs break-words" key={k}>
-              {k}: {String(v)}
+            <p>
+              Attribution requires correlated automatic identification system (AIS) transponder fixes within the operational release window.
             </p>
-          ))}
-        </section>
-      </div>
-      <section className={panel}>
-        <h3 className="mb-3 font-medium">Vessel compatibility ranking</h3>
-        <p className="mb-3 text-xs text-muted-foreground">{report.scoring.note}</p>
-        {report.candidates.length === 0 ? (
-          <p>
-            {report.stageStatus?.["ais"]?.status === "unavailable"
-              ? `AIS unavailable: ${report.stageStatus["ais"].reason}. No attribution generated.`
-              : "No observed vessel fixes met spatial/temporal criteria."}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr>
-                  <th>Candidate</th>
-                  <th>Score / 100</th>
-                  <th>Origin km</th>
-                  <th>Time Δ h</th>
-                  <th>Confidence</th>
-                  <th>AIS gaps</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.candidates.map((c) => (
-                  <tr key={c.mmsi} className="border-t border-border">
-                    <td className="py-3">
-                      <button
-                        className="text-primary text-left"
-                        onClick={() => setSelected(c.mmsi)}
-                      >
-                        #{c.rank} {c.name}
-                        <span className="block text-xs">
-                          {c.mmsi} · {c.type}
-                        </span>
-                      </button>
-                    </td>
-                    <td>{c.score}</td>
-                    <td>{c.closestDistanceKm}</td>
-                    <td>{c.timeDifferenceHours}</td>
-                    <td>{c.confidence}</td>
-                    <td>{c.anomalies.length}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
-        )}
-        {candidate && (
-          <div className="mt-3 rounded border border-primary/40 p-3">
-            <h4>{candidate.name} · evidence</h4>
-            <p className="my-2 text-sm">{candidate.evidence}</p>
-            <p className="text-xs">
-              AIS continuity: {(candidate.aisContinuity * 100).toFixed(0)}% ·{" "}
-              {candidate.continuityStatus}
-            </p>
-            {Object.entries(candidate.features).map(([k, v]) => (
-              <div key={k} className="mt-2 text-xs">
-                {k.replaceAll("_", " ")}: {(v * 100).toFixed(1)} / 100 · weight{" "}
-                {((report.scoring.weights[k] ?? 0) * 100).toFixed(1)}%
-                <progress className="block w-full" value={v} max={1} />
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">{report.scoring.note}</p>
+
+            {/* Top candidate prominently */}
+            {topCandidate && (
+              <div className="rounded border border-[var(--primary)]/30 bg-secondary/30 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="rounded bg-primary px-2 py-0.5 text-xs font-mono font-bold text-primary-foreground">
+                        #{topCandidate.rank}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[var(--accent-blue)]">
+                        Leading Candidate
+                      </span>
+                    </div>
+                    <div className="text-base font-bold text-foreground">{topCandidate.name}</div>
+                    <div className="text-xs font-mono text-muted-foreground">
+                      {topCandidate.type} &middot; MMSI {topCandidate.mmsi}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-mono font-bold text-foreground tabular-nums">
+                      {topCandidate.score}
+                      <span className="text-xs text-muted-foreground font-normal">/100</span>
+                    </div>
+                    <div className="text-[10px] uppercase font-mono text-muted-foreground">
+                      Compatibility Score
+                    </div>
+                  </div>
+                </div>
+
+                {/* Evidence indicators */}
+                <div className="mt-3 flex flex-wrap gap-2 text-xs font-mono">
+                  {topCandidate.closestDistanceKm < 5 && (
+                    <span className="flex items-center gap-1 text-emerald-400">
+                      <CheckCircle2 className="h-3 w-3" /> Spatial proximity
+                    </span>
+                  )}
+                  {topCandidate.timeDifferenceHours < 3 && (
+                    <span className="flex items-center gap-1 text-emerald-400">
+                      <CheckCircle2 className="h-3 w-3" /> Temporal compatibility
+                    </span>
+                  )}
+                  {topCandidate.anomalies.length > 0 && (
+                    <span className="flex items-center gap-1 text-amber-300">
+                      <AlertTriangle className="h-3 w-3" /> AIS discontinuity
+                    </span>
+                  )}
+                  {topCandidate.aisContinuity < 0.8 && (
+                    <span className="flex items-center gap-1 text-amber-300">
+                      <AlertTriangle className="h-3 w-3" /> Reduced AIS continuity
+                    </span>
+                  )}
+                </div>
+
+                {topCandidate.evidence && (
+                  <p className="mt-2 text-xs text-muted-foreground">{topCandidate.evidence}</p>
+                )}
               </div>
-            ))}
-          </div>
-        )}
-      </section>
-      <section className={panel}>
-        <h3 className="mb-2 font-medium">AIS discontinuities · not proof of disabling</h3>
-        {report.anomalies.length ? (
-          report.anomalies.map((a, i) => (
-            <div className="border-t border-border py-2 text-sm" key={i}>
-              <strong>
-                {a.mmsi}: {a.durationHours} hours
-              </strong>
-              <p>
-                {utc(a.start.timestamp)} → {utc(a.end.timestamp)}
-              </p>
-              <p className="text-xs">
-                {a.label} · relevance index {a.anomalyScore}
-              </p>
-            </div>
-          ))
-        ) : (
-          <p className="text-sm">
-            {report.stageStatus?.["ais"]?.status === "unavailable"
-              ? "AIS discontinuities not evaluated: compatible tracks unavailable."
-              : "No qualifying discontinuities in available candidate tracks."}
-          </p>
-        )}
-      </section>
-      {report.evidenceProvenance && (
-        <section className={panel} aria-label="Result provenance">
-          <h3 className="font-medium">Evidence provenance</h3>
-          {Object.entries(report.evidenceProvenance).map(([name, evidence]) => (
-            <p key={name} className="text-xs">
-              <strong>
-                {name}: {evidence.kind}
-              </strong>{" "}
-              — {evidence.reason}
-            </p>
-          ))}
-        </section>
-      )}
-      <details className={panel}>
-        <summary className="cursor-pointer">
-          Pipeline audit trail, provenance &amp; limitations
-        </summary>
-        <ol className="my-3 flex flex-wrap gap-2">
-          {report.stages.map((s, i) => (
-            <li className="rounded bg-secondary px-2 py-1 text-xs" key={s}>
-              {i + 1}. {s.replaceAll("_", " ")} ✓
-            </li>
-          ))}
-        </ol>
-        {Object.entries(report.provenance).map(([k, v]) => (
-          <p className="text-xs" key={k}>
-            {k}: {v}
-          </p>
-        ))}
-        {report.mode !== "DEMO" && (
-          <pre className="mt-3 overflow-auto whitespace-pre-wrap break-all text-xs">
-            {JSON.stringify(
-              {
-                assets: report.scene.assetSha256,
-                jointValidFraction: report.scene.jointValidFraction,
-                detector: report.detector,
-                environment: report.environment,
-              },
-              null,
-              2,
             )}
-          </pre>
+
+            {/* Other candidates */}
+            {candidates.length > 1 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <th className="py-2 pr-3">Rank</th>
+                      <th className="py-2 pr-3">Vessel</th>
+                      <th className="py-2 pr-3">MMSI</th>
+                      <th className="py-2 pr-3">Score</th>
+                      <th className="py-2 pr-3">Distance</th>
+                      <th className="py-2 pr-3">Time Δ</th>
+                      <th className="py-2 pr-3">AIS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {candidates.slice(1).map((c) => (
+                      <tr key={c.mmsi} className="border-t border-border/50">
+                        <td className="py-2 pr-3">#{c.rank}</td>
+                        <td className="py-2 pr-3 font-semibold text-foreground">{c.name}</td>
+                        <td className="py-2 pr-3">{c.mmsi}</td>
+                        <td className="py-2 pr-3 tabular-nums">{c.score}/100</td>
+                        <td className="py-2 pr-3 tabular-nums">{c.closestDistanceKm.toFixed(1)} km</td>
+                        <td className="py-2 pr-3 tabular-nums">{c.timeDifferenceHours.toFixed(1)}h</td>
+                        <td className="py-2 pr-3">{(c.aisContinuity * 100).toFixed(0)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
-        <p className="my-2 text-xs">
-          Storage: {report.persistence.local} · database: {report.persistence.database}
-        </p>
-        <ul className="list-disc pl-5 text-sm">
-          {report.uncertainty.map((text) => (
-            <li key={text}>{text}</li>
+      </div>
+
+      {/* 5. EVIDENCE CHAIN */}
+      <div className="rounded border border-border bg-card p-5">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground font-mono mb-4">
+          Evidence Chain
+        </h3>
+        <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+          {[
+            { label: "Satellite", ok: true },
+            { label: "Detection", ok: !!spill },
+            { label: "Characterization", ok: !!spill },
+            { label: "Drift", ok: report.backward.length > 0 },
+            { label: "Origin", ok: !!origin },
+            { label: "AIS Correlation", ok: candidates.length > 0 },
+            { label: "Attribution", ok: !!topCandidate },
+          ].map((step, i, arr) => (
+            <span key={step.label} className="flex items-center gap-1.5">
+              {step.ok ? (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+              ) : (
+                <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+              <span className={step.ok ? "text-foreground" : "text-muted-foreground"}>
+                {step.label}
+              </span>
+              {i < arr.length - 1 && (
+                <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+              )}
+            </span>
           ))}
+        </div>
+      </div>
+
+      {/* 6. LIMITATIONS */}
+      <div className="rounded border border-border bg-card p-4">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground font-mono mb-2">
+          Interpretation &amp; Limitations
+        </h3>
+        <ul className="space-y-1 text-xs text-muted-foreground">
+          <li>&bull; SAR dark areas can have non-oil look-alikes (biogenic slicks, low-wind zones).</li>
+          <li>&bull; AIS data may be incomplete due to reception gaps, not necessarily intentional disabling.</li>
+          <li>&bull; Drift-based origin estimates depend on environmental model accuracy.</li>
+          <li>&bull; Spill age is an observation-based estimate, not direct chemical dating.</li>
+          <li>&bull; Vessel compatibility is investigative evidence, not proof of responsibility.</li>
         </ul>
+        {report.disclaimer && (
+          <p className="mt-2 text-xs text-muted-foreground italic border-t border-border/50 pt-2">
+            {report.disclaimer}
+          </p>
+        )}
+      </div>
+
+      {/* 7. TECHNICAL DETAILS & EVIDENCE PROVENANCE (COLLAPSIBLE) */}
+      <details className="rounded border border-border bg-card group">
+        <summary className="flex cursor-pointer items-center justify-between px-5 py-3 text-left font-mono select-none hover:bg-secondary/40 transition-colors">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground flex items-center gap-2">
+            <Settings className="h-3.5 w-3.5 text-primary" />
+            Technical Details &amp; Evidence Provenance
+          </h3>
+          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+
+        <div className="border-t border-border px-5 py-4 space-y-4 text-xs font-mono">
+          {/* SAR Input */}
+          <div>
+            <h4 className="font-semibold text-foreground mb-2">
+              SAR Input &middot; {report.mode === "UPLOAD" ? "user-provided" : report.mode === "REAL" ? "real archived / on demand" : "synthetic"}
+            </h4>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {report.scene.pixels.length > 0 ? (
+                <Raster report={report} onImage={setImage} />
+              ) : (
+                <p className="text-xs text-muted-foreground py-2">Preview unavailable; see detection stage.</p>
+              )}
+              <div className="space-y-1">
+                <KeyVal k="Scene ID" v={report.scene.id} />
+                <KeyVal k="Source" v={report.scene.source} />
+                <KeyVal k="Dimensions" v={`${report.scene.width}×${report.scene.height} px`} />
+                <KeyVal k="Polarization" v={String(report.scene.polarization)} />
+                <KeyVal k="Resolution" v={`${report.scene.resolution_m.map((n) => n.toFixed(1)).join("×")} m/px`} />
+                <KeyVal k="Acquired" v={utc(report.scene.acquiredAt)} />
+                <KeyVal k="Detector" v={report.detector?.name ?? "unavailable"} />
+                <KeyVal k="Detector Status" v={report.detector?.status ?? "—"} />
+              </div>
+            </div>
+          </div>
+
+          {/* Characterization & Age */}
+          <div>
+            <h4 className="font-semibold text-foreground mb-2">Characterization &amp; Age</h4>
+            {spill ? (
+              <div className="space-y-1">
+                <p className="text-xs">
+                  Perimeter: {spill.metrics.perimeterM.toFixed(0)} m<br />
+                  Length × width: {spill.metrics.lengthM.toFixed(0)} × {spill.metrics.widthM.toFixed(0)} m
+                </p>
+                <KeyVal k="Geometry Method" v={spill.geometryMethod} />
+                <p className="text-xs">
+                  {age?.method.replaceAll("_", " ") ?? "Spill age unavailable"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {age?.caveat ?? "Hindcast duration is an analyst-selected scenario, not an age estimate."}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Characterization unavailable</p>
+                <p className="text-xs">Spill age unavailable</p>
+              </div>
+            )}
+          </div>
+
+          {/* Origin & Environment */}
+          <div>
+            <h4 className="font-semibold text-foreground mb-2">Origin &amp; Environment</h4>
+            {origin ? (
+              <div className="space-y-1">
+                <p className="text-xs">
+                  {origin.lat.toFixed(5)}° N, {origin.lon.toFixed(5)}° E
+                </p>
+                <p className="text-xs">
+                  {utc(origin.releaseWindow.start)} → {utc(origin.releaseWindow.end)}
+                </p>
+                <p className="my-1 text-xs">
+                  Origin sensitivity radius: {origin.uncertaintyKm} km · forecast {report.forecastHours}h
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Modeled origin unavailable. No release location inferred.</p>
+            )}
+            {Object.keys(report.environment).length > 0 && (
+              <div className="mt-2 space-y-1">
+                {Object.entries(report.environment).map(([k, v]) => (
+                  <KeyVal key={k} k={k.replaceAll("_", " ")} v={String(v)} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* AIS Discontinuities */}
+          {anomalies.length > 0 && (
+            <div>
+              <h4 className="font-semibold text-foreground mb-2">
+                AIS Discontinuities &middot; not proof of disabling
+              </h4>
+              {anomalies.map((a, i) => (
+                <div className="border-t border-border/50 py-2" key={i}>
+                  <strong>{a.mmsi}: {a.durationHours} hours</strong>
+                  <p className="text-muted-foreground">{utc(a.start.timestamp)} → {utc(a.end.timestamp)}</p>
+                  <p className="text-muted-foreground">{a.label} &middot; relevance {a.anomalyScore}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Evidence Provenance */}
+          {report.evidenceProvenance && (
+            <div>
+              <h4 className="font-semibold text-foreground mb-2">Evidence provenance</h4>
+              {Object.entries(report.evidenceProvenance).map(([name, evidence]) => (
+                <p key={name} className="text-xs">
+                  <strong>{name}: {evidence.kind}</strong> — {evidence.reason}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* Pipeline Audit */}
+          <div>
+            <h4 className="font-semibold text-foreground mb-2">Pipeline Audit Trail</h4>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {report.stages.map((s, i) => (
+                <span className="rounded bg-secondary px-2 py-1" key={s}>
+                  {i + 1}. {s.replaceAll("_", " ")} ✓
+                </span>
+              ))}
+            </div>
+            {Object.entries(report.provenance).map(([k, v]) => (
+              <p key={k}>{k}: {v}</p>
+            ))}
+            <p className="mt-2 text-muted-foreground">
+              Storage: {report.persistence.local} &middot; database: {report.persistence.database}
+            </p>
+            <ul className="list-disc pl-5 mt-2 text-muted-foreground">
+              {report.uncertainty.map((text) => (
+                <li key={text}>{text}</li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Report ID & meta */}
+          <div className="border-t border-border/50 pt-2 text-muted-foreground">
+            <p>Report ID: {report.id}</p>
+            <p>Processed: {utc(report.processedAt ?? report.detectedAt)}</p>
+          </div>
+        </div>
       </details>
     </div>
   );
 }
 
-function AnalysisPage() {
+function InvestigationPage() {
   const client = useQueryClient();
   const {
     setActiveReport,
@@ -568,6 +679,7 @@ function AnalysisPage() {
     history,
     historyLoading,
   } = useIncident();
+  const [showControls, setShowControls] = useState(false);
   const [horizon, setHorizon] = useState(24);
   const [sceneId, setSceneId] = useState("demo-arabian-sea");
   const [onDemand, setOnDemand] = useState(false);
@@ -582,7 +694,6 @@ function AnalysisPage() {
     sceneId === "upload" ? "UPLOAD" : (scenes.data?.find((s) => s.id === sceneId)?.mode ?? "DEMO");
   const [seconds, setSeconds] = useState(0);
 
-  // Track a pending saved-report fetch (for when we select from dropdown by id).
   const [pendingSavedId, setPendingSavedId] = useState("");
   const savedFetch = useQuery({
     queryKey: ["incident", pendingSavedId],
@@ -591,18 +702,14 @@ function AnalysisPage() {
     retry: false,
   });
 
-  // When a saved report arrives from the fetch, store it as the active report.
   useEffect(() => {
     if (savedFetch.data && savedFetch.data.id === pendingSavedId) {
       setActiveReport(savedFetch.data);
-      setPendingSavedId(""); // clear after promotion
+      setPendingSavedId("");
     }
   }, [savedFetch.data, pendingSavedId, setActiveReport]);
 
-  // The saved-reports select value is the activeReportId (or "" if none).
-  // We track a local "selectedSavedValue" to mirror the dropdown accurately.
   const [savedDropdownValue, setSavedDropdownValue] = useState("");
-  // Sync dropdown when active report changes externally (e.g. after analyze).
   useEffect(() => {
     setSavedDropdownValue(activeReportId);
   }, [activeReportId]);
@@ -622,213 +729,187 @@ function AnalysisPage() {
     return () => clearInterval(timer);
   }, [analysis.isPending]);
 
-  // Separate errors: mutation/fetch errors are shown distinctly from scene/history load errors.
   const analysisError = analysis.error;
   const savedFetchError = savedFetch.isError && pendingSavedId ? savedFetch.error : null;
-  const scenesError = scenes.isError ? scenes.error : null;
+
+  const button =
+    "rounded border border-border bg-secondary px-3 py-2 text-xs font-mono font-semibold hover:bg-secondary/80 text-foreground transition-colors disabled:opacity-40 cursor-pointer";
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold">O.S.I.S. · Source attribution</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Scene → detection → age → origin hindcast → forecast → historical AIS → evidence-ranked
-          candidates
-        </p>
-      </div>
-      <section className={`${panel} flex flex-wrap items-end gap-4`}>
-        {/* INPUT SCENE — choosing this does NOT load or change the current report */}
-        <label className="text-xs">
-          Input scene
-          <p className="text-[10px] text-muted-foreground mb-1">
-            Choose the SAR / demo scene to analyze
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">Investigation</h1>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Complete evidence report with all pipeline stages
           </p>
-          <select
-            value={sceneId}
-            onChange={(e) => setSceneId(e.target.value)}
-            className="mt-1 block rounded bg-secondary p-2 text-sm"
-            aria-label="Scene"
-          >
-            <option value="demo-arabian-sea">DEMO · Arabian Sea synthetic exercise</option>
-            <option value="demo-no-spill">DEMO · No spill exercise</option>
-            <option value="demo-inconclusive">DEMO · Inconclusive exercise</option>
-            {scenes.data
-              ?.filter((s) => s.mode === "REAL")
-              .map((s) => (
-                <option key={s.id} value={s.id}>
-                  REAL · {s.name}
-                </option>
-              ))}
-            <option value="upload">UPLOAD · calibrated SAR subset (512×512 GeoTIFF)</option>
-          </select>
-        </label>
-        {mode !== "DEMO" && (
-          <>
-            {mode === "REAL" && (
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowControls(!showControls)}
+          className={button}
+        >
+          <Settings className="h-3 w-3 inline mr-1.5" />
+          {showControls ? "Hide" : "Show"} Analysis Controls
+        </button>
+      </div>
+
+      {/* Analysis Controls — collapsed by default when report is loaded */}
+      {showControls && (
+        <section className="rounded border border-border bg-card p-4 space-y-3">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground font-mono">
+            Run New Analysis
+          </h3>
+          <div className="flex flex-wrap items-end gap-4">
+            <label className="text-xs">
+              Input scene
+              <select
+                value={sceneId}
+                onChange={(e) => setSceneId(e.target.value)}
+                className="mt-1 block rounded bg-secondary p-2 text-sm border border-border"
+              >
+                <option value="demo-arabian-sea">DEMO · Arabian Sea</option>
+                <option value="demo-no-spill">DEMO · No spill</option>
+                <option value="demo-inconclusive">DEMO · Inconclusive</option>
+                {scenes.data
+                  ?.filter((s) => s.mode === "REAL")
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      REAL · {s.name}
+                    </option>
+                  ))}
+                <option value="upload">UPLOAD · SAR (512×512 GeoTIFF)</option>
+              </select>
+            </label>
+            {mode !== "DEMO" && (
               <>
+                {mode === "REAL" && (
+                  <>
+                    <label className="text-xs">
+                      <input type="checkbox" checked={onDemand} onChange={(e) => setOnDemand(e.target.checked)} />{" "}
+                      On-demand CDSE fetch
+                    </label>
+                    <label className="text-xs">
+                      Detector
+                      <select value={detector} onChange={(e) => setDetector(e.target.value as "hybrid" | "classical")} className="mt-1 block rounded bg-secondary p-2 text-sm border border-border">
+                        <option value="hybrid">Hybrid</option>
+                        <option value="classical">Classical</option>
+                      </select>
+                    </label>
+                  </>
+                )}
                 <label className="text-xs">
-                  <input
-                    type="checkbox"
-                    checked={onDemand}
-                    onChange={(e) => setOnDemand(e.target.checked)}
-                  />{" "}
-                  Fetch CDSE subset on demand (otherwise use archived local SAR)
-                </label>
-                <label className="text-xs">
-                  Experimental detector
-                  <select
-                    value={detector}
-                    onChange={(e) => setDetector(e.target.value as "hybrid" | "classical")}
-                    className="mt-1 block rounded bg-secondary p-2 text-sm"
-                  >
-                    <option value="hybrid">Hybrid (checkpoint required)</option>
-                    <option value="classical">Classical</option>
-                  </select>
+                  Hindcast hours
+                  <input type="number" min={1} max={48} step={1} value={hindcastHours} onChange={(e) => setHindcastHours(Number(e.target.value))} className="mt-1 block w-28 rounded bg-secondary p-2 text-sm border border-border" />
                 </label>
               </>
             )}
             <label className="text-xs">
-              Hindcast scenario hours (NOT age)
-              <input
-                type="number"
-                min={1}
-                max={48}
-                step={1}
-                value={hindcastHours}
-                onChange={(e) => setHindcastHours(Number(e.target.value))}
-                className="mt-1 block w-28 rounded bg-secondary p-2 text-sm"
-              />
+              Forecast
+              <select value={horizon} onChange={(e) => setHorizon(Number(e.target.value))} className="mt-1 block rounded bg-secondary p-2 text-sm border border-border">
+                {[24, 48, 72].map((h) => (
+                  <option key={h} value={h}>{h}h</option>
+                ))}
+              </select>
             </label>
-          </>
-        )}
-        <label className="text-xs">
-          Forecast horizon
-          <select
-            value={horizon}
-            onChange={(e) => setHorizon(Number(e.target.value))}
-            className="mt-1 block rounded bg-secondary p-2 text-sm"
-          >
-            {[24, 48, 72].map((h) => (
-              <option key={h} value={h}>
-                {h} hours
-              </option>
-            ))}
-          </select>
-        </label>
-        {sceneId !== "upload" && (
-          <button
-            className={`${button} bg-primary text-primary-foreground`}
-            disabled={analysis.isPending}
-            onClick={() => {
-              setSeconds(0);
-              analysis.mutate(
-                mode === "REAL"
-                  ? { mode, sceneId, forecastHours: horizon, hindcastHours, detector, onDemand }
-                  : { mode: "DEMO", sceneId, forecastHours: horizon },
-              );
-            }}
-          >
-            {" "}
-            {analysis.isPending ? "Analyzing…" : `Analyze ${mode} pipeline`}{" "}
-          </button>
-        )}
+            {sceneId !== "upload" && (
+              <button
+                className="rounded bg-primary px-3.5 py-2 text-xs font-mono font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40 cursor-pointer"
+                disabled={analysis.isPending}
+                onClick={() => {
+                  setSeconds(0);
+                  analysis.mutate(
+                    mode === "REAL"
+                      ? { mode, sceneId, forecastHours: horizon, hindcastHours, detector, onDemand }
+                      : { mode: "DEMO", sceneId, forecastHours: horizon },
+                  );
+                }}
+              >
+                {analysis.isPending ? `Analyzing… ${seconds}s` : `Analyze ${mode}`}
+              </button>
+            )}
+          </div>
+          {sceneId === "upload" && (
+            <SARUpload
+              disabled={analysis.isPending}
+              forecastHours={horizon}
+              hindcastHours={hindcastHours}
+              onSuccess={(r) => {
+                client.setQueryData(["incident", r.id], r);
+                setActiveReport(r);
+                void client.invalidateQueries({ queryKey: ["incidents"] });
+              }}
+            />
+          )}
 
-        {/* OUTPUT REPORT — selecting this loads a previously generated report */}
-        <label className="text-xs">
-          Saved reports
-          <p className="text-[10px] text-muted-foreground mb-1">
-            Open a previously generated incident report
-          </p>
-          <select
-            disabled={analysis.isPending}
-            className="mt-1 block max-w-xs rounded bg-secondary p-2 text-sm"
-            value={savedDropdownValue}
-            onChange={(e) => {
-              analysis.reset();
-              const newId = e.target.value;
-              setSavedDropdownValue(newId);
-              if (!newId) {
-                clearActiveReport();
-                setPendingSavedId("");
-              } else {
-                // Check React Query cache first, else trigger fetch.
-                const cached = client.getQueryData<typeof activeReport>(["incident", newId]);
-                if (cached) {
-                  setActiveReport(cached);
-                } else {
-                  setPendingSavedId(newId);
-                }
-              }
-            }}
-          >
-            <option value="">Select report</option>
-            {history.map((r) => (
-              <option value={r.id} key={r.id}>
-                {r.mode ?? "DEMO"} · {r.status} · {r.detectedAt.slice(0, 19)} · {r.id.slice(0, 8)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
-      <p className="text-sm font-medium">
-        Next analysis mode: {mode}. Saved reports retain their original mode and evidence.
-      </p>
+          {/* Saved reports selector */}
+          <div className="border-t border-border/50 pt-3">
+            <label className="text-xs">
+              <span className="text-muted-foreground">Or load a saved report:</span>
+              <select
+                disabled={analysis.isPending}
+                className="mt-1 block max-w-xs rounded bg-secondary p-2 text-sm border border-border"
+                value={savedDropdownValue}
+                onChange={(e) => {
+                  analysis.reset();
+                  const newId = e.target.value;
+                  setSavedDropdownValue(newId);
+                  if (!newId) {
+                    clearActiveReport();
+                    setPendingSavedId("");
+                  } else {
+                    const cached = client.getQueryData<typeof activeReport>(["incident", newId]);
+                    if (cached) {
+                      setActiveReport(cached);
+                    } else {
+                      setPendingSavedId(newId);
+                    }
+                  }
+                }}
+              >
+                <option value="">Select report</option>
+                {history.map((r) => (
+                  <option value={r.id} key={r.id}>
+                    {getIncidentLabel(r)} · {r.status} · {r.detectedAt.slice(0, 16)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
+      )}
+
+      {/* Status messages */}
       {analysis.isPending && (
-        <div role="status" className={panel}>
-          Computing scientific pipeline on backend · {seconds}s elapsed. Stages will be confirmed
-          after completion; no simulated progress percentages.
+        <div role="status" className="rounded border border-border bg-card p-4 text-xs font-mono">
+          Computing scientific pipeline on backend · {seconds}s elapsed.
         </div>
       )}
       {(analysisError || savedFetchError) && (
-        <div role="alert" className="rounded border border-red-400 p-3 text-sm">
-          {(analysisError || savedFetchError)?.message}
-          <p>
-            Ensure the backend is running on the configured VITE_API_URL. No mock result has been
-            substituted.
+        <div role="alert" className="rounded border border-red-400/40 bg-red-500/5 p-3 text-xs">
+          <p className="font-semibold text-red-400">{(analysisError || savedFetchError)?.message}</p>
+          <p className="text-muted-foreground mt-1">
+            Ensure the backend is running. No mock result has been substituted.
           </p>
-          <button
-            className={button}
-            onClick={() => {
-              analysis.reset();
-              setPendingSavedId("");
-              clearActiveReport();
-            }}
-          >
-            Retry loading data
+          <button className={button + " mt-2"} onClick={() => { analysis.reset(); setPendingSavedId(""); clearActiveReport(); }}>
+            Retry
           </button>
         </div>
       )}
-      {scenesError && (
-        <div className="rounded border border-yellow-600/40 p-2 text-xs text-yellow-300">
-          Scene list unavailable — backend may be offline. DEMO options remain available above.
+
+      {/* Main content */}
+      {!activeReport && !analysis.isPending && (
+        <div className="rounded border border-border bg-card p-12 text-center space-y-3">
+          <p className="text-sm font-medium text-foreground">No incident loaded</p>
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+            Click "Show Analysis Controls" above to run a new analysis or select a saved report.
+          </p>
+          <button type="button" onClick={() => setShowControls(true)} className="rounded bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground mt-2">
+            Show Analysis Controls
+          </button>
         </div>
       )}
-      {(savedFetch.isFetching || historyLoading) && !analysis.isPending && (
-        <p role="status">Loading saved incident…</p>
-      )}
-      {sceneId === "upload" && (
-        <SARUpload
-          disabled={analysis.isPending}
-          forecastHours={horizon}
-          hindcastHours={hindcastHours}
-          onSuccess={(r) => {
-            client.setQueryData(["incident", r.id], r);
-            setActiveReport(r);
-            void client.invalidateQueries({ queryKey: ["incidents"] });
-          }}
-        />
-      )}
-      {!activeReport && !analysis.isPending && sceneId !== "upload" && (
-        <p className="py-10 text-center text-muted-foreground">
-          DEMO is deterministic and uses fictional vessels. REAL uses trusted archived SAR and
-          reports partial evidence when matching environmental fields or historical AIS are
-          unavailable.
-          <br />
-          Select a scene above and click Analyze, or choose a saved report to view it here and on
-          all tabs.
-        </p>
-      )}
-      {activeReport && <ReportView key={activeReport.id} report={activeReport} />}
+      {activeReport && <InvestigationReport key={activeReport.id} report={activeReport} />}
     </div>
   );
 }

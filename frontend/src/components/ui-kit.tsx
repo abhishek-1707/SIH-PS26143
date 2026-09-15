@@ -2,22 +2,27 @@ import { useEffect, type ReactNode } from "react";
 
 export function Panel({
   title,
+  badge,
   action,
   children,
   className = "",
 }: {
   title?: string;
+  badge?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <section className={`rounded-lg border border-border bg-card/60 ${className}`}>
+    <section className={`rounded border border-border bg-card ${className}`}>
       {title && (
-        <header className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-2.5">
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            {title}
-          </h2>
+        <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground font-mono">
+              {title}
+            </h2>
+            {badge}
+          </div>
           {action}
         </header>
       )}
@@ -26,27 +31,72 @@ export function Panel({
   );
 }
 
-export function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
+export function Stat({
+  label,
+  value,
+  hint,
+  highlight,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: string;
+  highlight?: "cyan" | "amber" | "emerald" | "rose" | undefined;
+}) {
+  const highlightClass =
+    highlight === "cyan"
+      ? "text-[var(--accent-blue)] font-semibold"
+      : highlight === "amber"
+        ? "text-amber-400 font-semibold"
+        : highlight === "emerald"
+          ? "text-emerald-400 font-semibold"
+          : highlight === "rose"
+            ? "text-rose-400 font-semibold"
+            : "text-foreground font-medium";
+
   return (
-    <div className="border-l border-border/70 pl-3">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-      <div className="mt-1 text-lg font-medium tabular-nums text-foreground">{value}</div>
+    <div className="border-l-2 border-border pl-3 py-0.5 space-y-0.5">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground font-mono">
+        {label}
+      </div>
+      <div className={`text-lg tabular-nums ${highlightClass}`}>{value}</div>
       {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
     </div>
   );
 }
 
-export function Meter({ label, value }: { label: string; value: number }) {
+export function Meter({
+  label,
+  value,
+  max = 100,
+  tone,
+}: {
+  label: string;
+  value: number;
+  max?: number;
+  tone?: "cyan" | "amber" | "emerald" | "rose";
+}) {
+  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  const barColor =
+    tone === "amber"
+      ? "bg-amber-400"
+      : tone === "emerald"
+        ? "bg-emerald-400"
+        : tone === "rose"
+          ? "bg-rose-500"
+          : "bg-[var(--accent-blue)]";
+
   return (
     <div>
       <div className="flex items-baseline justify-between text-[11px]">
-        <span className="uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
-        <span className="tabular-nums text-foreground">{value}</span>
+        <span className="uppercase tracking-[0.12em] text-muted-foreground font-mono">{label}</span>
+        <span className="tabular-nums font-mono text-foreground font-medium">
+          {Math.round(value)}%
+        </span>
       </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary">
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded bg-secondary">
         <div
-          className="h-full rounded-full bg-[var(--accent-cyan)] transition-[width] duration-500 ease-out"
-          style={{ width: `${value}%` }}
+          className={`h-full rounded ${barColor} transition-[width] duration-300 ease-out`}
+          style={{ width: `${pct}%` }}
         />
       </div>
     </div>
@@ -54,12 +104,66 @@ export function Meter({ label, value }: { label: string; value: number }) {
 }
 
 export function StatusDot({ label }: { label: string }) {
+  const upper = label.toUpperCase();
+  let textClass = "text-muted-foreground border-border bg-secondary/60";
+  let dotBg = "bg-muted-foreground";
+
+  if (
+    upper.includes("SPILL_DETECTED") ||
+    upper.includes("ALERT") ||
+    upper.includes("DISCONTINUITY")
+  ) {
+    textClass = "text-rose-400 border-rose-500/40 bg-rose-500/10";
+    dotBg = "bg-rose-500";
+  } else if (upper.includes("NO_SPILL") || upper.includes("CLEAN") || upper.includes("VERIFIED")) {
+    textClass = "text-emerald-400 border-emerald-500/40 bg-emerald-500/10";
+    dotBg = "bg-emerald-400";
+  } else if (
+    upper.includes("INCONCLUSIVE") ||
+    upper.includes("UNAVAILABLE") ||
+    upper.includes("PENDING")
+  ) {
+    textClass = "text-amber-400 border-amber-500/40 bg-amber-500/10";
+    dotBg = "bg-amber-400";
+  }
+
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--accent-cyan)]/40 px-2 py-0.5 text-[11px] uppercase tracking-[0.14em] text-[var(--accent-cyan)]">
-      <span className="om-pulse-dot h-1.5 w-1.5 rounded-full bg-[var(--accent-cyan)]" />
+    <span
+      className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] font-mono ${textClass}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${dotBg}`} />
       {label}
     </span>
   );
+}
+
+export function OutcomeBadge({ outcome }: { outcome?: string | null }) {
+  if (!outcome) return null;
+  if (outcome === "SPILL_DETECTED") {
+    return (
+      <div className="inline-flex items-center gap-2 rounded border border-rose-500/50 bg-rose-500/10 px-2.5 py-1 text-xs font-mono font-semibold text-rose-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+        SPILL DETECTED
+      </div>
+    );
+  }
+  if (outcome === "NO_SPILL_DETECTED") {
+    return (
+      <div className="inline-flex items-center gap-2 rounded border border-emerald-500/50 bg-emerald-500/10 px-2.5 py-1 text-xs font-mono font-semibold text-emerald-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+        NO SPILL DETECTED
+      </div>
+    );
+  }
+  if (outcome === "ANALYSIS_INCONCLUSIVE") {
+    return (
+      <div className="inline-flex items-center gap-2 rounded border border-amber-500/50 bg-amber-500/10 px-2.5 py-1 text-xs font-mono font-semibold text-amber-300">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+        ANALYSIS INCONCLUSIVE
+      </div>
+    );
+  }
+  return <StatusDot label={outcome} />;
 }
 
 export function Modal({
@@ -85,25 +189,22 @@ export function Modal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="om-fade absolute inset-0 bg-background/80 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="om-fade absolute inset-0 bg-background/80" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="om-rise relative z-10 w-full max-w-lg rounded-lg border border-border bg-card shadow-2xl"
+        className="om-rise relative z-10 w-full max-w-lg rounded border border-border bg-card shadow-2xl"
       >
-        <header className="flex items-start justify-between gap-4 border-b border-border/70 px-5 py-3.5">
+        <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-3.5">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-            {subtitle && <p className="text-[11px] text-muted-foreground">{subtitle}</p>}
+            <h3 className="text-sm font-semibold text-foreground font-mono">{title}</h3>
+            {subtitle && <p className="text-[11px] text-muted-foreground font-mono">{subtitle}</p>}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
+            className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground font-mono transition-colors hover:bg-secondary hover:text-foreground"
           >
             Close
           </button>
@@ -117,8 +218,10 @@ export function Modal({
 export function KeyVal({ k, v }: { k: string; v: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-border/50 py-1.5 last:border-0">
-      <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{k}</span>
-      <span className="tabular-nums text-foreground">{v}</span>
+      <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground font-mono">
+        {k}
+      </span>
+      <span className="tabular-nums text-foreground font-mono text-xs">{v}</span>
     </div>
   );
 }

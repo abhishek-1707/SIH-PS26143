@@ -27,3 +27,7 @@ __pycache__/
 backend/data/incidents/
 frontend/.osis-*-test-*/
 !**/.env.example
+
+backend/data/*.tiff
+
+backend/data/*.tiff

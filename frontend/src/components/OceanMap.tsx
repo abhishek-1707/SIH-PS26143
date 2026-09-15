@@ -104,10 +104,15 @@ export function OceanMap({
   };
 
   const btn =
-    "h-8 w-8 rounded-md border border-border/80 bg-card/80 text-foreground/80 backdrop-blur transition-colors hover:border-primary/60 hover:text-primary";
+    "h-7 w-7 rounded border border-border bg-card text-foreground font-mono text-xs transition-colors hover:bg-secondary flex items-center justify-center shadow-xs";
+
+  // Coordinates for graticule labels around LON0/LAT0
+  const lons = [72.1, 72.2, 72.3, 72.4, 72.5, 72.6, 72.7, 72.8];
+  const lats = [14.9, 15.0, 15.1, 15.2, 15.3, 15.4, 15.5, 15.6];
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-border bg-[var(--map-bg)]">
+    <div className="relative overflow-hidden rounded border border-border bg-[var(--map-bg)]">
+      {/* Top and side tactical coordinate indicators */}
       <div
         ref={containerRef}
         style={{ height }}
@@ -124,55 +129,118 @@ export function OceanMap({
         >
           <defs>
             <pattern id="om-grid" width="50" height="50" patternUnits="userSpaceOnUse">
-              <path d="M50 0H0V50" fill="none" stroke="var(--map-grid)" strokeWidth="1" />
+              <path d="M50 0H0V50" fill="none" stroke="var(--map-grid)" strokeWidth="0.75" />
             </pattern>
             <radialGradient id="om-glow" cx="50%" cy="45%" r="60%">
-              <stop offset="0%" stopColor="var(--map-glow)" stopOpacity="0.55" />
+              <stop offset="0%" stopColor="var(--map-glow)" stopOpacity="0.45" />
               <stop offset="100%" stopColor="var(--map-glow)" stopOpacity="0" />
             </radialGradient>
           </defs>
           <rect width={VIEW_W} height={VIEW_H} fill="var(--map-bg)" />
           <rect width={VIEW_W} height={VIEW_H} fill="url(#om-glow)" />
+
           <g transform={`translate(${offset.x} ${offset.y}) scale(${zoom})`}>
             <rect
-              x={-2000}
-              y={-2000}
-              width={5000}
-              height={5000}
+              x={-2500}
+              y={-2500}
+              width={6000}
+              height={6000}
               fill="url(#om-grid)"
-              opacity={0.5}
+              opacity={0.6}
             />
+
+            {/* Hydrodynamic swell lines */}
             <g className="om-swell">
-              {Array.from({ length: 14 }).map((_, i) => (
+              {Array.from({ length: 16 }).map((_, i) => (
                 <path
                   key={i}
-                  d={`M-800 ${-200 + i * 90} Q -400 ${-230 + i * 90} 0 ${-200 + i * 90} T 800 ${-200 + i * 90} T 1600 ${-200 + i * 90}`}
+                  d={`M-1000 ${-300 + i * 85} Q -500 ${-330 + i * 85} 0 ${-300 + i * 85} T 700 ${-300 + i * 85} T 1600 ${-300 + i * 85}`}
                   fill="none"
                   stroke="var(--map-swell)"
-                  strokeWidth={1 / zoom}
+                  strokeWidth={0.8 / zoom}
                 />
               ))}
             </g>
+
+            {/* Geographical coordinate graticule reference ticks */}
+            <g opacity={0.35}>
+              {lons.map((lon) => {
+                const [x] = project(lon, LAT0);
+                return (
+                  <g key={`lon-${lon}`}>
+                    <line
+                      x1={x}
+                      y1={-2000}
+                      x2={x}
+                      y2={2000}
+                      stroke="var(--map-label)"
+                      strokeWidth={0.5 / zoom}
+                      strokeDasharray="3 6"
+                    />
+                    <text
+                      x={x + 3}
+                      y={VIEW_H - 12}
+                      fontSize={9 / zoom}
+                      fill="var(--map-label)"
+                      fontFamily="monospace"
+                    >
+                      {lon.toFixed(1)}°E
+                    </text>
+                  </g>
+                );
+              })}
+              {lats.map((lat) => {
+                const [, y] = project(LON0, lat);
+                return (
+                  <g key={`lat-${lat}`}>
+                    <line
+                      x1={-2000}
+                      y1={y}
+                      x2={3000}
+                      y2={y}
+                      stroke="var(--map-label)"
+                      strokeWidth={0.5 / zoom}
+                      strokeDasharray="3 6"
+                    />
+                    <text
+                      x={12}
+                      y={y - 3}
+                      fontSize={9 / zoom}
+                      fill="var(--map-label)"
+                      fontFamily="monospace"
+                    >
+                      {lat.toFixed(1)}°N
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+
+            {/* Actual dynamic children: spill polygons, tracks, markers */}
             {children}
           </g>
         </svg>
       </div>
 
+      {/* UI Overlays: Controls, Legend, Status */}
       <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-3">
         <div className="flex items-start justify-between gap-3">
           {legend ? (
-            <div className="pointer-events-auto rounded-md border border-border/70 bg-card/75 px-3 py-2 text-[11px] leading-5 text-muted-foreground backdrop-blur">
+            <div className="pointer-events-auto rounded border border-border bg-card px-3 py-2 text-[11px] leading-relaxed text-muted-foreground shadow-xs font-mono">
               {legend}
             </div>
           ) : (
             <span />
           )}
+
+          {/* Navigation and Zoom buttons */}
           <div className="pointer-events-auto flex flex-col gap-1.5">
             <button
               type="button"
               aria-label="Zoom in"
               className={btn}
               onClick={() => zoomAt(stateRef.current.zoom * 1.35, VIEW_W / 2, VIEW_H / 2)}
+              title="Zoom In"
             >
               +
             </button>
@@ -181,6 +249,7 @@ export function OceanMap({
               aria-label="Zoom out"
               className={btn}
               onClick={() => zoomAt(stateRef.current.zoom / 1.35, VIEW_W / 2, VIEW_H / 2)}
+              title="Zoom Out"
             >
               −
             </button>
@@ -192,17 +261,19 @@ export function OceanMap({
                 setZoom(initialZoom);
                 setOffset(initialOffset);
               }}
+              title="Reset View"
             >
               ⤾
             </button>
           </div>
         </div>
-        <div className="flex items-end justify-between text-[11px] text-muted-foreground">
-          <span className="rounded bg-background/50 px-2 py-1 backdrop-blur">
-            Drag to pan · scroll to zoom
+
+        <div className="flex items-end justify-between text-[11px] text-muted-foreground font-mono">
+          <span className="rounded bg-card/95 px-2 py-0.5 border border-border">
+            Arabian Sea Sector &middot; Drag to pan &middot; Scroll to zoom
           </span>
-          <span className="rounded bg-background/50 px-2 py-1 tabular-nums backdrop-blur">
-            {zoom.toFixed(2)}×
+          <span className="rounded bg-card/95 px-2 py-0.5 tabular-nums border border-border text-[var(--accent-blue)]">
+            MAG {zoom.toFixed(2)}&times;
           </span>
         </div>
       </div>
@@ -213,7 +284,7 @@ export function OceanMap({
 export function Marker({
   lon,
   lat,
-  color = "var(--accent-cyan)",
+  color = "var(--accent-blue)",
   label,
   active,
   onClick,
@@ -235,17 +306,23 @@ export function Marker({
       onClick={onClick}
       style={{ cursor: onClick ? "pointer" : "default" }}
     >
-      {pulse && <circle r={14} fill={color} opacity={0.18} className="om-pulse" />}
-      <circle r={active ? 8 : 5.5} fill={color} opacity={active ? 1 : 0.85} />
+      {pulse && <circle r={16} fill={color} opacity={0.16} className="om-pulse" />}
+      <circle r={active ? 8 : 5} fill={color} opacity={active ? 1 : 0.9} />
       <circle
-        r={active ? 14 : 10}
+        r={active ? 14 : 9}
         fill="none"
         stroke={color}
         strokeWidth={active ? 1.8 : 1}
-        opacity={0.7}
+        opacity={0.8}
       />
       {label && (
-        <text x={16} y={4} fontSize={13} fill="var(--map-label)" className="pointer-events-none">
+        <text
+          x={14}
+          y={4}
+          fontSize={11}
+          fill="var(--map-label)"
+          className="pointer-events-none select-none font-mono font-medium"
+        >
           {label}
         </text>
       )}
