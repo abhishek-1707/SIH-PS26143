@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useIncident } from "../context/IncidentContext";
 import { getIncidentLabel } from "../api/incidents";
-import { OceanMap, pathFrom, project } from "../components/OceanMap";
-import { Marker } from "../components/OceanMap";
+import { OceanMap, Marker, MapGeoJSON, MapPolyline, MapCircle } from "../components/OceanMap";
+
 import { KeyVal, OutcomeBadge, Panel, Stat } from "../components/ui-kit";
 import {
   Radar,
@@ -107,32 +107,21 @@ function OverviewDashboard() {
   const isNoSpill = outcome === "NO_SPILL_DETECTED";
   const isDemo = report.mode === "DEMO" || !report.mode;
 
-  // Build spill polygon path
-  const spillCoords: [number, number][] =
-    spill?.geometry.coordinates[0]?.map(([lon, lat]) => [lon, lat]) ?? [];
-  const hasPolygon = spillCoords.length > 0;
-  const spillD = hasPolygon
-    ? spillCoords
-        .map(
-          ([lon, lat], i) =>
-            `${i ? "L" : "M"}${project(lon, lat).join(" ")}`,
-        )
-        .join(" ") + " Z"
-    : "";
-
+  const hasPolygon = !!spill?.geometry;
   const driftPath = backward ?? [];
   const hasDrift = driftPath.length > 0;
 
   const mapCenter: [number, number] = spill
-    ? [spill.metrics.centroid.lon, spill.metrics.centroid.lat]
+    ? [spill.metrics.centroid.lat, spill.metrics.centroid.lon]
     : origin
-      ? [origin.lon, origin.lat]
+      ? [origin.lat, origin.lon]
       : report.scene.bbox
         ? [
-            (report.scene.bbox[0] + report.scene.bbox[2]) / 2,
             (report.scene.bbox[1] + report.scene.bbox[3]) / 2,
+            (report.scene.bbox[0] + report.scene.bbox[2]) / 2,
           ]
-        : [72.45, 15.25];
+        : [15.25, 72.45];
+
 
   // Pipeline stages: Detection -> Drift -> AIS Correlation -> Attribution
   const pipelineSteps = [
@@ -390,67 +379,81 @@ function OverviewDashboard() {
             </div>
           }
         >
-          {/* Spill polygon */}
-          {hasPolygon && (
-            <path
-              d={spillD}
-              fill="var(--accent-blue)"
-              fillOpacity={0.2}
-              stroke="var(--accent-blue)"
-              strokeWidth={1.8}
+          {/* Spill polygon via Leaflet GeoJSON */}
+          {hasPolygon && spill?.geometry && (
+            <MapGeoJSON
+              data={spill.geometry}
+              style={{
+                color: "#38bdf8",
+                fillColor: "#38bdf8",
+                fillOpacity: 0.25,
+                weight: 2,
+              }}
             />
           )}
-          {/* Drift path */}
+          {/* Drift path via Leaflet Polyline */}
           {hasDrift && (
-            <path
-              d={pathFrom(driftPath.map((p) => [p.lon, p.lat]))}
-              fill="none"
-              stroke="var(--accent-amber)"
-              strokeWidth={1.6}
-              strokeDasharray="6 5"
-              opacity={0.85}
+            <MapPolyline
+              positions={driftPath.map((p) => [p.lat, p.lon])}
+              pathOptions={{
+                color: "var(--accent-amber)",
+                dashArray: "6 5",
+                weight: 2,
+              }}
             />
           )}
-          {/* Origin marker */}
+          {/* Origin marker & uncertainty circle */}
           {origin && (
-            <Marker
-              lon={origin.lon}
-              lat={origin.lat}
-              color="var(--accent-amber)"
-              label="Estimated Origin"
-            />
+            <>
+              <Marker
+                lat={origin.lat}
+                lon={origin.lon}
+                color="var(--accent-amber)"
+                label="Estimated Origin"
+              />
+              <MapCircle
+                center={[origin.lat, origin.lon]}
+                radius={(origin.uncertaintyKm || 5) * 1000}
+                pathOptions={{
+                  color: "var(--accent-amber)",
+                  fillColor: "var(--accent-amber)",
+                  fillOpacity: 0.08,
+                  dashArray: "4 4",
+                  weight: 1.5,
+                }}
+              />
+            </>
           )}
           {/* Spill centroid */}
           {spill && (
             <Marker
-              lon={spill.metrics.centroid.lon}
               lat={spill.metrics.centroid.lat}
+              lon={spill.metrics.centroid.lon}
               label="Detected Spill"
               pulse
             />
           )}
-          {/* Vessel positions */}
+          {/* Vessel positions & tracks */}
           {candidates.map((c) => {
             const last = c.track[c.track.length - 1];
             if (!last) return null;
             return (
-              <g key={c.mmsi}>
-                <path
-                  d={pathFrom(
-                    c.track.map((p) => [p.longitude, p.latitude]),
-                  )}
-                  fill="none"
-                  stroke="#475569"
-                  strokeWidth={1}
-                  opacity={0.5}
+              <div key={c.mmsi}>
+                <MapPolyline
+                  positions={c.track.map((p) => [p.latitude, p.longitude])}
+                  pathOptions={{
+                    color: "#64748b",
+                    weight: 1.5,
+                    opacity: 0.6,
+                  }}
                 />
                 <Marker
-                  lon={last.longitude}
                   lat={last.latitude}
+                  lon={last.longitude}
                   color="#94a3b8"
                   label={`${c.name} (${c.score}/100)`}
                 />
-              </g>
+              </div>
             );
           })}
         </OceanMap>

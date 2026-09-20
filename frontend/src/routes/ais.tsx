@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Marker, OceanMap, pathFrom } from "../components/OceanMap";
+import { Marker, OceanMap, MapPolyline, MapCircle } from "../components/OceanMap";
+
 import { KeyVal, Meter, Modal, OutcomeBadge, Panel, StatusDot } from "../components/ui-kit";
 import { useIncident } from "../context/IncidentContext";
 import {
@@ -132,17 +133,18 @@ function AisPage() {
     setOpen(true);
   };
 
-  // Map center: prefer spill centroid, then origin
+  // Map center: prefer spill centroid, then origin [lat, lon]
   const mapCenter: [number, number] = spill
-    ? [spill.metrics.centroid.lon, spill.metrics.centroid.lat]
+    ? [spill.metrics.centroid.lat, spill.metrics.centroid.lon]
     : origin
-      ? [origin.lon, origin.lat]
+      ? [origin.lat, origin.lon]
       : report.scene.bbox
         ? [
-            (report.scene.bbox[0] + report.scene.bbox[2]) / 2,
             (report.scene.bbox[1] + report.scene.bbox[3]) / 2,
+            (report.scene.bbox[0] + report.scene.bbox[2]) / 2,
           ]
-        : [72.45, 15.25];
+        : [15.25, 72.45];
+
 
   return (
     <div className="space-y-6">
@@ -250,8 +252,8 @@ function AisPage() {
             {/* Spill Centroid */}
             {spill && (
               <Marker
-                lon={spill.metrics.centroid.lon}
                 lat={spill.metrics.centroid.lat}
+                lon={spill.metrics.centroid.lon}
                 label="Detected Slick"
                 pulse
               />
@@ -259,12 +261,25 @@ function AisPage() {
 
             {/* Modeled Origin Cell */}
             {origin && (
-              <Marker
-                lon={origin.lon}
-                lat={origin.lat}
-                color="var(--accent-amber)"
-                label="Modeled Origin"
-              />
+              <>
+                <Marker
+                  lat={origin.lat}
+                  lon={origin.lon}
+                  color="var(--accent-amber)"
+                  label="Modeled Origin"
+                />
+                <MapCircle
+                  center={[origin.lat, origin.lon]}
+                  radius={(origin.uncertaintyKm || 5) * 1000}
+                  pathOptions={{
+                    color: "var(--accent-amber)",
+                    fillColor: "var(--accent-amber)",
+                    fillOpacity: 0.08,
+                    dashArray: "4 4",
+                    weight: 1.5,
+                  }}
+                />
+              </>
             )}
 
             {/* Candidate Tracks */}
@@ -277,16 +292,17 @@ function AisPage() {
                 const hasAnomalyForVessel = anomalies.some((a) => a.mmsi === c.mmsi);
 
                 return (
-                  <g key={c.mmsi}>
+                  <div key={c.mmsi}>
                     {segments.map((seg, j) => (
-                      <path
-                        key={j}
-                        d={pathFrom(seg.map((p) => [p.longitude, p.latitude]))}
-                        fill="none"
-                        stroke={active ? "var(--accent-blue)" : "#475569"}
-                        strokeWidth={active ? 2.2 : 1.2}
-                        strokeDasharray={hasAnomalyForVessel ? "7 5" : undefined}
-                        opacity={active ? 1 : 0.6}
+                      <MapPolyline
+                        key={`seg-${j}`}
+                        positions={seg.map((p) => [p.latitude, p.longitude])}
+                        pathOptions={{
+                          color: active ? "var(--accent-blue)" : "#64748b",
+                          weight: active ? 2.5 : 1.4,
+                          dashArray: hasAnomalyForVessel ? "7 5" : undefined,
+                          opacity: active ? 1 : 0.6,
+                        }}
                       />
                     ))}
 
@@ -294,32 +310,31 @@ function AisPage() {
                     {anomalies
                       .filter((a) => a.mmsi === c.mmsi)
                       .map((a, i) => (
-                        <path
+                        <MapPolyline
                           key={`gap-${i}`}
-                          d={pathFrom([
-                            [a.start.longitude, a.start.latitude],
-                            [a.end.longitude, a.end.latitude],
-                          ])}
-                          stroke="#ef4444"
-                          strokeWidth={2}
-                          strokeDasharray="4 6"
-                          fill="none"
-                        >
-                          <title>{`${a.durationHours}h unobserved corridor · ${a.label}`}</title>
-                        </path>
+                          positions={[
+                            [a.start.latitude, a.start.longitude],
+                            [a.end.latitude, a.end.longitude],
+                          ]}
+                          pathOptions={{
+                            color: "#ef4444",
+                            weight: 2,
+                            dashArray: "4 6",
+                          }}
+                        />
                       ))}
 
                     {last && (
                       <Marker
-                        lon={last.longitude}
                         lat={last.latitude}
+                        lon={last.longitude}
                         color={active ? "var(--accent-blue)" : "#94a3b8"}
                         active={active}
                         label={`${c.name} (${c.score}/100)`}
                         onClick={() => select(c.mmsi)}
                       />
                     )}
-                  </g>
+                  </div>
                 );
               })}
           </OceanMap>

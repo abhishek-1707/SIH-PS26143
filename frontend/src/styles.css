@@ -219,3 +219,107 @@ input[type="range"].om-range::-moz-range-thumb {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ==========================================================================
+   Leaflet Base & Dark Maritime Cartography Theme
+   ========================================================================== */
+
+.osis-leaflet-map {
+  background-color: var(--map-bg) !important;
+  font-family: inherit;
+  z-index: 1;
+}
+
+/* Controlled dark nautical filter for standard OpenStreetMap tiles */
+.osis-leaflet-map .leaflet-tile-pane {
+  filter: brightness(0.65) invert(1) contrast(2.4) hue-rotate(198deg) saturate(0.32);
+}
+
+/* Keep vector overlays (spill polygons, drift polylines, markers, popups) in original crisp colors */
+.osis-leaflet-map .leaflet-overlay-pane,
+.osis-leaflet-map .leaflet-marker-pane,
+.osis-leaflet-map .leaflet-popup-pane,
+.osis-leaflet-map .leaflet-tooltip-pane {
+  filter: none !important;
+}
+
+/* Custom dark tactical popups */
+.osis-leaflet-map .leaflet-popup-content-wrapper,
+.osis-leaflet-map .leaflet-popup-tip {
+  background: var(--card) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
+}
+
+.osis-leaflet-map .leaflet-popup-content {
+  margin: 10px 14px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+}
+
+/* Custom dark tactical tooltips */
+.osis-leaflet-map .leaflet-tooltip {
+  background: var(--card) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+}
+
+.osis-leaflet-map .leaflet-tooltip-top:before {
+  border-top-color: var(--border) !important;
+}
+.osis-leaflet-map .leaflet-tooltip-bottom:before {
+  border-bottom-color: var(--border) !important;
+}
+.osis-leaflet-map .leaflet-tooltip-left:before {
+  border-left-color: var(--border) !important;
+}
+.osis-leaflet-map .leaflet-tooltip-right:before {
+  border-right-color: var(--border) !important;
+}
+
+/* Subtle dark attribution control */
+.osis-leaflet-map .leaflet-control-attribution {
+  background: rgba(11, 15, 23, 0.85) !important;
+  color: var(--muted-foreground) !important;
+  font-family: ui-monospace, SFMono-Regular, monospace !important;
+  font-size: 9px !important;
+  border-top-left-radius: 4px;
+  padding: 2px 6px !important;
+}
+.osis-leaflet-map .leaflet-control-attribution a {
+  color: var(--accent-blue) !important;
+  text-decoration: none;
+}
+.osis-leaflet-map .leaflet-control-attribution a:hover {
+  text-decoration: underline;
+}
+
+/* Tactical Pulse Animation for Markers */
+@keyframes osis-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  70% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.osis-marker-pulse {
+  animation: osis-pulse 2.2s infinite ease-out;
+  transform-origin: center;
+}
+

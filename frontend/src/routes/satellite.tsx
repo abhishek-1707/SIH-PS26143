@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { OceanMap, project } from "../components/OceanMap";
+import { OceanMap, Marker, MapRectangle, MapImageOverlay, MapGeoJSON } from "../components/OceanMap";
+
 import { KeyVal, Modal, OutcomeBadge, Panel, Stat, StatusDot } from "../components/ui-kit";
 import { useIncident } from "../context/IncidentContext";
 import {
@@ -167,19 +168,15 @@ function SatellitePage() {
   // Polygon from the detected spill geometry
   const spillCoords: [number, number][] =
     spill?.geometry.coordinates[0]?.map(([lon, lat]) => [lon, lat]) ?? [];
-  const hasPolygon = spillCoords.length > 0;
-  const spillD = hasPolygon
-    ? spillCoords
-        .map(([lon, lat], i) => `${i ? "L" : "M"}${project(lon, lat).join(" ")}`)
-        .join(" ") + " Z"
-    : "";
+  const hasPolygon = !!spill?.geometry;
 
-  // Map center: prefer spill centroid, then scene bbox center
+  // Map center: prefer spill centroid, then scene bbox center [lat, lon]
   const mapCenter: [number, number] = spill
-    ? [spill.metrics.centroid.lon, spill.metrics.centroid.lat]
+    ? [spill.metrics.centroid.lat, spill.metrics.centroid.lon]
     : scene.bbox
-      ? [(scene.bbox[0] + scene.bbox[2]) / 2, (scene.bbox[1] + scene.bbox[3]) / 2]
-      : [72.45, 15.25];
+      ? [(scene.bbox[1] + scene.bbox[3]) / 2, (scene.bbox[0] + scene.bbox[2]) / 2]
+      : [15.25, 72.45];
+
 
   return (
     <div className="space-y-6">
@@ -334,103 +331,53 @@ function SatellitePage() {
             {scene.bbox &&
               (() => {
                 const [west, south, east, north] = scene.bbox;
-                const [sx, sy] = project(west, north);
-                const [ex, ey] = project(east, south);
                 return (
                   <>
                     {isKarnataka && (
-                      <image
-                        href={karnatakaImageUrl}
-                        x={sx}
-                        y={sy}
-                        width={ex - sx}
-                        height={ey - sy}
+                      <MapImageOverlay
+                        url={karnatakaImageUrl}
+                        bounds={[[south, west], [north, east]]}
                         opacity={0.85}
-                        preserveAspectRatio="none"
-                      >
-                        <title>Sentinel-1A Real SAR Imagery (19 June 2024)</title>
-                      </image>
+                      />
                     )}
-                    <rect
+                    <MapRectangle
                       aria-label="Analyzed scene footprint"
-                      x={sx}
-                      y={sy}
-                      width={ex - sx}
-                      height={ey - sy}
-                      fill="none"
-                      stroke="#38bdf8"
-                      strokeWidth={1.5}
-                      strokeDasharray="6 4"
-                      opacity={0.8}
-                    >
-                      <title>Analyzed scene footprint</title>
-                    </rect>
+                      title="Analyzed scene footprint"
+                      bounds={[[south, west], [north, east]]}
+                      pathOptions={{
+                        color: "#38bdf8",
+                        weight: 1.5,
+                        dashArray: "6 4",
+                        fill: false,
+                        opacity: 0.8,
+                      }}
+                    />
                   </>
                 );
               })()}
 
-            {/* Simulated subtle microwave sea clutter texture */}
-            <g opacity={0.3}>
-              {Array.from({ length: 20 }).map((_, i) => (
-                <ellipse
-                  key={i}
-                  cx={150 + ((i * 149) % 750)}
-                  cy={100 + ((i * 197) % 440)}
-                  rx={25 + ((i * 13) % 40)}
-                  ry={10 + ((i * 9) % 18)}
-                  fill="oklch(0.28 0.03 240 / 0.4)"
-                />
-              ))}
-            </g>
-
             {/* Slick Polygon */}
-            {hasPolygon && showPolygon && (
-              <>
-                <path
-                  d={spillD}
-                  fill="oklch(0.08 0.02 250 / 0.9)"
-                  stroke="var(--accent-blue)"
-                  strokeWidth={1.8}
-                />
-                <path
-                  d={spillD}
-                  fill="none"
-                  stroke="var(--accent-blue)"
-                  strokeWidth={6}
-                  opacity={0.12}
-                />
-              </>
+            {hasPolygon && showPolygon && spill?.geometry && (
+              <MapGeoJSON
+                data={spill.geometry}
+                style={{
+                  color: "var(--accent-blue)",
+                  fillColor: "oklch(0.08 0.02 250 / 0.9)",
+                  fillOpacity: 0.85,
+                  weight: 2,
+                }}
+              />
             )}
 
             {/* Spill Centroid */}
-            {spill &&
-              (() => {
-                const [cx, cy] = project(spill.metrics.centroid.lon, spill.metrics.centroid.lat);
-                return (
-                  <g>
-                    <circle cx={cx} cy={cy} r={5} fill="var(--accent-blue)" opacity={0.9} />
-                    <circle
-                      cx={cx}
-                      cy={cy}
-                      r={12}
-                      fill="none"
-                      stroke="var(--accent-blue)"
-                      strokeWidth={1}
-                      opacity={0.5}
-                    />
-                    <text
-                      x={cx + 10}
-                      y={cy + 4}
-                      fontSize={11}
-                      fill="var(--accent-blue)"
-                      fontFamily="monospace"
-                      fontWeight="bold"
-                    >
-                      Slick Centroid ({spill.metrics.areaKm2} km²)
-                    </text>
-                  </g>
-                );
-              })()}
+            {spill && (
+              <Marker
+                lat={spill.metrics.centroid.lat}
+                lon={spill.metrics.centroid.lon}
+                label={`Slick Centroid (${spill.metrics.areaKm2} km²)`}
+                pulse
+              />
+            )}
           </OceanMap>
 
           <div className="mt-3 flex items-center justify-between text-xs font-mono text-muted-foreground">

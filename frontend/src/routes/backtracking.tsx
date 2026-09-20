@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Marker, OceanMap, pathFrom } from "../components/OceanMap";
+import { Marker, OceanMap, MapPolyline, MapCircle } from "../components/OceanMap";
+
 import { KeyVal, OutcomeBadge, Panel, Stat, StatusDot } from "../components/ui-kit";
 import { useIncident } from "../context/IncidentContext";
 import {
@@ -114,17 +115,18 @@ function BacktrackingPage() {
   const point = hasPath ? activePath[currentStep] : null;
   const visible = hasPath ? activePath.slice(0, currentStep + 1) : [];
 
-  // Map center: prefer spill centroid, then origin
+  // Map center: prefer spill centroid, then origin [lat, lon]
   const mapCenter: [number, number] = spill
-    ? [spill.metrics.centroid.lon, spill.metrics.centroid.lat]
+    ? [spill.metrics.centroid.lat, spill.metrics.centroid.lon]
     : origin
-      ? [origin.lon, origin.lat]
+      ? [origin.lat, origin.lon]
       : report.scene.bbox
         ? [
-            (report.scene.bbox[0] + report.scene.bbox[2]) / 2,
             (report.scene.bbox[1] + report.scene.bbox[3]) / 2,
+            (report.scene.bbox[0] + report.scene.bbox[2]) / 2,
           ]
-        : [72.45, 15.25];
+        : [15.25, 72.45];
+
 
   // Derive human-readable environmental variables
   const currentSpeed = environment["current_speed"] ?? environment["current_velocity"] ?? environment["surface_current_mps"];
@@ -279,41 +281,35 @@ function BacktrackingPage() {
               </div>
             }
           >
-            <defs>
-              <marker id="forecast-arrow-head" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-                <path d="M0,0 L6,3 L0,6" fill="#22d3ee" />
-              </marker>
-            </defs>
-
             {/* Faint complete path */}
             {hasPath && (
-              <path
-                d={pathFrom(activePath.map((p) => [p.lon, p.lat]))}
-                fill="none"
-                stroke="var(--map-label)"
-                strokeWidth={1}
-                strokeDasharray="4 6"
-                opacity={0.35}
+              <MapPolyline
+                positions={activePath.map((p) => [p.lat, p.lon])}
+                pathOptions={{
+                  color: "var(--map-label)",
+                  dashArray: "4 6",
+                  weight: 1.5,
+                  opacity: 0.35,
+                }}
               />
             )}
 
             {/* Active scrubbed portion */}
             {hasPath && (
-              <path
-                d={pathFrom(visible.map((p) => [p.lon, p.lat]))}
-                fill="none"
-                stroke={direction === "backward" ? "var(--accent-amber)" : "#22d3ee"}
-                strokeWidth={2.4}
-                strokeLinecap="round"
-                markerEnd={direction === "forward" ? "url(#forecast-arrow-head)" : undefined}
+              <MapPolyline
+                positions={visible.map((p) => [p.lat, p.lon])}
+                pathOptions={{
+                  color: direction === "backward" ? "var(--accent-amber)" : "#22d3ee",
+                  weight: 3,
+                }}
               />
             )}
 
             {/* Slick Detection at t=0 */}
             {spill && (
               <Marker
-                lon={spill.metrics.centroid.lon}
                 lat={spill.metrics.centroid.lat}
+                lon={spill.metrics.centroid.lon}
                 label="Observed Slick (t=0)"
                 pulse
               />
@@ -321,19 +317,32 @@ function BacktrackingPage() {
 
             {/* Modeled Origin (backward mode) */}
             {direction === "backward" && origin && (
-              <Marker
-                lon={origin.lon}
-                lat={origin.lat}
-                color="var(--accent-amber)"
-                label="Modeled Origin"
-              />
+              <>
+                <Marker
+                  lat={origin.lat}
+                  lon={origin.lon}
+                  color="var(--accent-amber)"
+                  label="Modeled Origin"
+                />
+                <MapCircle
+                  center={[origin.lat, origin.lon]}
+                  radius={(origin.uncertaintyKm || 5) * 1000}
+                  pathOptions={{
+                    color: "var(--accent-amber)",
+                    fillColor: "var(--accent-amber)",
+                    fillOpacity: 0.08,
+                    dashArray: "4 4",
+                    weight: 1.5,
+                  }}
+                />
+              </>
             )}
 
             {/* Active scrubbed particle */}
             {point && (
               <Marker
-                lon={point.lon}
                 lat={point.lat}
+                lon={point.lon}
                 color={direction === "backward" ? "var(--accent-amber)" : "#22d3ee"}
                 label={`t = ${point.hours > 0 ? `+${point.hours.toFixed(0)}` : point.hours.toFixed(0)}h`}
                 pulse

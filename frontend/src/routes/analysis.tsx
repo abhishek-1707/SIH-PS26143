@@ -1,7 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { OceanMap, pathFrom, project, Marker } from "../components/OceanMap";
+import {
+  OceanMap,
+  Marker,
+  MapRectangle,
+  MapGeoJSON,
+  MapPolyline,
+  MapCircle,
+} from "../components/OceanMap";
+
 import { SARUpload } from "../components/SARUpload";
 import { useIncident } from "../context/IncidentContext";
 import { KeyVal, Meter, Modal, OutcomeBadge, Panel, Stat, StatusDot } from "../components/ui-kit";
@@ -34,7 +42,6 @@ import {
 export const Route = createFileRoute("/analysis")({ component: InvestigationPage });
 const colors = ["var(--accent-blue)", "#94a3b8", "#f59e0b"];
 const utc = (time: string) => time.replace("T", " ").replace("Z", " UTC");
-const pointsPath = (points: Position[]) => pathFrom(points.map((p) => [p.lon, p.lat]));
 
 function Raster({ report, onImage }: { report: IncidentReport; onImage: (url: string) => void }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -82,13 +89,12 @@ function InvestigationReport({ report }: { report: IncidentReport }) {
 
   // Map setup
   const [west, south, east, north] = report.scene.bbox ?? [72.3, 15.1, 72.6, 15.4];
-  const [sx, sy] = project(west, north);
-  const [ex, ey] = project(east, south);
   const mapCenter: [number, number] = spill
-    ? [spill.metrics.centroid.lon, spill.metrics.centroid.lat]
+    ? [spill.metrics.centroid.lat, spill.metrics.centroid.lon]
     : origin
-      ? [origin.lon, origin.lat]
-      : [(west + east) / 2, (south + north) / 2];
+      ? [origin.lat, origin.lon]
+      : [(south + north) / 2, (west + east) / 2];
+
 
   const exportReport = () => {
     const url = URL.createObjectURL(
@@ -258,40 +264,36 @@ function InvestigationReport({ report }: { report: IncidentReport }) {
             </div>
           }
         >
-          <defs>
-            <marker id="forecast-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-              <path d="M0,0 L6,3 L0,6" fill="#22d3ee" />
-            </marker>
-          </defs>
-
           {/* Analyzed scene footprint rect */}
           {report.scene.bbox && (
-            <rect
+            <MapRectangle
+              bounds={[
+                [report.scene.bbox[1], report.scene.bbox[0]],
+                [report.scene.bbox[3], report.scene.bbox[2]],
+              ]}
               aria-label="Analyzed scene footprint"
-              x={sx}
-              y={sy}
-              width={ex - sx}
-              height={ey - sy}
-              fill="none"
-              stroke="#94a3b8"
-              strokeWidth={2}
-              strokeDasharray="6 4"
-            >
-              <title>Analyzed scene footprint</title>
-            </rect>
+              title="Analyzed scene footprint"
+              pathOptions={{
+                fill: false,
+                color: "#94a3b8",
+                weight: 2,
+                dashArray: "6 4",
+              }}
+            />
           )}
 
           {/* Spill polygons */}
           {report.detections.map((d, i) => (
-            <path
+            <MapGeoJSON
               key={i}
-              d={`${pathFrom(d.geometry.coordinates[0] ?? [])} Z`}
-              fill="#fb718566"
-              stroke="#fb7185"
-              strokeWidth={2}
-            >
-              <title>{`Candidate ${i + 1}: ${d.metrics.areaKm2} km²`}</title>
-            </path>
+              data={d.geometry}
+              style={{
+                color: "#fb7185",
+                fillColor: "#fb7185",
+                fillOpacity: 0.4,
+                weight: 2,
+              }}
+            />
           ))}
 
           {/* Origin */}
@@ -301,45 +303,57 @@ function InvestigationReport({ report }: { report: IncidentReport }) {
 
           {/* Backward drift */}
           {report.backward.length > 0 && (
-            <path d={pointsPath(report.backward)} fill="none" stroke="#fb923c" strokeWidth={2.5} strokeDasharray="7 3" />
+            <MapPolyline
+              positions={report.backward.map((p) => [p.lat, p.lon])}
+              pathOptions={{
+                color: "#fb923c",
+                weight: 2.5,
+                dashArray: "7 3",
+              }}
+            />
           )}
 
           {/* Forward forecast */}
           {report.forward.length > 0 && (
-            <path d={pointsPath(report.forward)} fill="none" stroke="#22d3ee" strokeWidth={2} markerEnd="url(#forecast-arrow)" />
+            <MapPolyline
+              positions={report.forward.map((p) => [p.lat, p.lon])}
+              pathOptions={{
+                color: "#22d3ee",
+                weight: 2,
+              }}
+            />
           )}
 
           {/* Vessel tracks */}
-          {candidates.map((c, i) => (
-            <g key={c.mmsi} onClick={() => setSelected(c.mmsi)} style={{ cursor: "pointer" }}>
-              {c.trackSegments.map((segment, j) => (
-                <path
-                  key={j}
-                  d={pathFrom(segment.map((p) => [p.longitude, p.latitude]))}
-                  fill="none"
-                  stroke={colors[i % colors.length]}
-                  strokeWidth={selected === c.mmsi ? 3 : 1.5}
-                  opacity={0.8}
-                />
-              ))}
-            </g>
-          ))}
+          {candidates.map((c, i) =>
+            c.trackSegments.map((segment, j) => (
+              <MapPolyline
+                key={`${c.mmsi}-${j}`}
+                positions={segment.map((p) => [p.latitude, p.longitude])}
+                eventHandlers={{ click: () => setSelected(c.mmsi) }}
+                pathOptions={{
+                  color: colors[i % colors.length],
+                  weight: selected === c.mmsi ? 3 : 1.5,
+                  opacity: 0.8,
+                }}
+              />
+            ))
+          )}
 
           {/* AIS gaps */}
           {anomalies.map((a, i) => (
-            <path
+            <MapPolyline
               key={i}
-              d={pathFrom([
-                [a.start.longitude, a.start.latitude],
-                [a.end.longitude, a.end.latitude],
-              ])}
-              stroke="#f87171"
-              strokeWidth={2}
-              strokeDasharray="3 5"
-              fill="none"
-            >
-              <title>{`${a.durationHours}h unobserved corridor`}</title>
-            </path>
+              positions={[
+                [a.start.latitude, a.start.longitude],
+                [a.end.latitude, a.end.longitude],
+              ]}
+              pathOptions={{
+                color: "#f87171",
+                weight: 2,
+                dashArray: "3 5",
+              }}
+            />
           ))}
 
           {/* Spill centroid */}
