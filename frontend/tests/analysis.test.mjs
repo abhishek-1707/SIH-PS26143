@@ -2,7 +2,7 @@
 // Derived report variants below are TEST fixtures, never operational REAL assets.
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -26,7 +26,9 @@ before(async () => {
   const output = Array.isArray(bundle) ? bundle[0].output : bundle.output;
   for (const item of output) {
     assert.equal(item.type, "chunk");
-    await writeFile(path.join(directory, item.fileName), item.code);
+    const filePath = path.join(directory, item.fileName);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, item.code);
   }
   const entry = output.find((item) => item.isEntry);
   ({ ReportView } = await import(pathToFileURL(path.join(directory, entry.fileName)).href));

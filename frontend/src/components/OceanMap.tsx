@@ -4,7 +4,8 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
-import type { LeafletMapProps } from "./LeafletMapClient";
+import { createClientOnlyFn } from "@tanstack/react-start";
+import type { LeafletMapProps } from "./leaflet-types";
 
 // Legacy projection constants and functions preserved for backward compatibility
 export const VIEW_W = 1000;
@@ -27,19 +28,33 @@ export function pathFrom(points: [number, number][]) {
     .join(" ");
 }
 
+export type { LeafletMapProps };
 export type OceanMapProps = LeafletMapProps;
 
+interface LeafletClientModule {
+  LeafletMapClient: ComponentType<LeafletMapProps>;
+  MapMarker: ComponentType<any>;
+  MapGeoJSON: ComponentType<any>;
+  MapPolyline: ComponentType<any>;
+  MapPolygon: ComponentType<any>;
+  MapRectangle: ComponentType<any>;
+  MapCircle: ComponentType<any>;
+  MapImageOverlay: ComponentType<any>;
+}
+
 // Cache loaded Leaflet module on client
-let clientModulePromise: Promise<typeof import("./LeafletMapClient")> | null = null;
+let clientModulePromise: Promise<LeafletClientModule> | null = null;
 
-function getClientModule(): Promise<typeof import("./LeafletMapClient")> | null {
-  if (typeof window === "undefined") return null;
-
+const loadClientModule = createClientOnlyFn(async (): Promise<LeafletClientModule> => {
   if (!clientModulePromise) {
-    clientModulePromise = import("./LeafletMapClient");
+    clientModulePromise = import("./LeafletMapClient.client");
   }
-
   return clientModulePromise;
+});
+
+function getClientModule(): Promise<LeafletClientModule> | null {
+  if (typeof window === "undefined") return null;
+  return loadClientModule();
 }
 
 
@@ -106,6 +121,7 @@ export function MapMarker(props: {
   pulse?: boolean | undefined;
   onClick?: (() => void) | undefined;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   const [Comp, setComp] = useState<ComponentType<any> | null>(null);
 
@@ -132,6 +148,7 @@ export function MapGeoJSON(props: {
   data: any;
   style?: any;
   onEachFeature?: (feature: any, layer: any) => void;
+  [key: string]: any;
 }) {
   const [Comp, setComp] = useState<ComponentType<any> | null>(null);
 
@@ -156,6 +173,7 @@ export function MapPolyline(props: {
   positions: [number, number][];
   pathOptions?: any;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   const [Comp, setComp] = useState<ComponentType<any> | null>(null);
 
@@ -180,6 +198,7 @@ export function MapPolygon(props: {
   positions: [number, number][] | [number, number][][];
   pathOptions?: any;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   const [Comp, setComp] = useState<ComponentType<any> | null>(null);
 
@@ -206,6 +225,7 @@ export function MapRectangle(props: {
   title?: string | undefined;
   "aria-label"?: string | undefined;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   const [Comp, setComp] = useState<ComponentType<any> | null>(null);
 
@@ -245,6 +265,7 @@ export function MapCircle(props: {
   radius: number;
   pathOptions?: any;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   const [Comp, setComp] = useState<ComponentType<any> | null>(null);
 
@@ -270,6 +291,7 @@ export function MapImageOverlay(props: {
   bounds: [[number, number], [number, number]];
   opacity?: number | undefined;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   const [Comp, setComp] = useState<ComponentType<any> | null>(null);
 

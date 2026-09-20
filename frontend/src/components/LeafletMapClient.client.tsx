@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { LeafletMapProps } from "./leaflet-types";
 import {
   MapContainer,
   TileLayer,
@@ -53,11 +54,11 @@ export function createTacticalIcon({
   active = false,
   pulse = false,
 }: {
-  color?: string;
-  label?: string;
-  active?: boolean;
-  pulse?: boolean;
-}) {
+  color?: string | undefined;
+  label?: string | undefined;
+  active?: boolean | undefined;
+  pulse?: boolean | undefined;
+} = {}) {
   const size = active ? 26 : 18;
   const pulseHtml = pulse
     ? `<div class="osis-marker-pulse" style="position:absolute;inset:-8px;border-radius:9999px;border:2px solid ${color};background:${color};opacity:0.25;pointer-events:none;"></div>`
@@ -202,18 +203,7 @@ function MapStatusFooter() {
   );
 }
 
-export type LeafletMapProps = {
-  children?: ReactNode | undefined;
-  height?: number | string | undefined;
-  initialZoom?: number | undefined;
-  initialCenter?: [number, number] | undefined;
-  center?: [number, number] | undefined;
-  bounds?: [[number, number], [number, number]] | undefined;
-  legend?: ReactNode | undefined;
-  tileUrl?: string | undefined;
-  tileAttribution?: string | undefined;
-  className?: string | undefined;
-};
+export type { LeafletMapProps };
 
 export function LeafletMapClient({
   children,
@@ -281,6 +271,7 @@ export function MapMarker({
   pulse,
   onClick,
   children,
+  ...rest
 }: {
   position?: [number, number] | undefined;
   lat?: number | undefined;
@@ -291,6 +282,7 @@ export function MapMarker({
   pulse?: boolean | undefined;
   onClick?: (() => void) | undefined;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   const [pLat, pLon] = position
     ? normalizeLatLng(position)
@@ -303,25 +295,28 @@ export function MapMarker({
     [color, label, active, pulse]
   );
 
-  return (
-    <LeafletMarker
-      position={[pLat, pLon]}
-      icon={icon}
-      eventHandlers={onClick ? { click: onClick } : undefined}
-    >
-      {children}
-    </LeafletMarker>
-  );
+  const markerProps: any = {
+    position: [pLat, pLon],
+    icon,
+    ...rest,
+  };
+  if (onClick) {
+    markerProps.eventHandlers = { click: onClick };
+  }
+
+  return <LeafletMarker {...markerProps}>{children}</LeafletMarker>;
 }
 
 export function MapGeoJSON({
   data,
   style,
   onEachFeature,
+  ...rest
 }: {
   data: any;
   style?: L.PathOptions | ((feature: any) => L.PathOptions) | undefined;
   onEachFeature?: ((feature: any, layer: L.Layer) => void) | undefined;
+  [key: string]: any;
 }) {
   if (!data) return null;
   const key = useMemo(() => {
@@ -332,58 +327,62 @@ export function MapGeoJSON({
     }
   }, [data]);
 
-  return <GeoJSON key={key} data={data} style={style} onEachFeature={onEachFeature} />;
+  const props: any = { key, data, ...rest };
+  if (style !== undefined) props.style = style;
+  if (onEachFeature !== undefined) props.onEachFeature = onEachFeature;
+
+  return <GeoJSON {...props} />;
 }
 
 export function MapPolyline({
   positions,
   pathOptions,
   children,
+  ...rest
 }: {
   positions: [number, number][];
   pathOptions?: L.PolylineOptions | undefined;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   if (!positions || positions.length < 2) return null;
-  return (
-    <Polyline positions={positions} pathOptions={pathOptions}>
-      {children}
-    </Polyline>
-  );
+  const props: any = { positions, ...rest };
+  if (pathOptions !== undefined) props.pathOptions = pathOptions;
+  return <Polyline {...props}>{children}</Polyline>;
 }
 
 export function MapPolygon({
   positions,
   pathOptions,
   children,
+  ...rest
 }: {
   positions: [number, number][] | [number, number][][];
   pathOptions?: L.PolylineOptions | undefined;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   if (!positions) return null;
-  return (
-    <Polygon positions={positions} pathOptions={pathOptions}>
-      {children}
-    </Polygon>
-  );
+  const props: any = { positions, ...rest };
+  if (pathOptions !== undefined) props.pathOptions = pathOptions;
+  return <Polygon {...props}>{children}</Polygon>;
 }
 
 export function MapRectangle({
   bounds,
   pathOptions,
   children,
+  ...rest
 }: {
   bounds: [[number, number], [number, number]];
   pathOptions?: L.PathOptions | undefined;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   if (!bounds) return null;
-  return (
-    <Rectangle bounds={bounds} pathOptions={pathOptions}>
-      {children}
-    </Rectangle>
-  );
+  const props: any = { bounds, ...rest };
+  if (pathOptions !== undefined) props.pathOptions = pathOptions;
+  return <Rectangle {...props}>{children}</Rectangle>;
 }
 
 export function MapCircle({
@@ -391,18 +390,18 @@ export function MapCircle({
   radius,
   pathOptions,
   children,
+  ...rest
 }: {
   center: [number, number];
   radius: number;
   pathOptions?: L.CircleMarkerOptions | undefined;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   const normCenter = normalizeLatLng(center);
-  return (
-    <Circle center={normCenter} radius={radius} pathOptions={pathOptions}>
-      {children}
-    </Circle>
-  );
+  const props: any = { center: normCenter, radius, ...rest };
+  if (pathOptions !== undefined) props.pathOptions = pathOptions;
+  return <Circle {...props}>{children}</Circle>;
 }
 
 export function MapImageOverlay({
@@ -410,18 +409,17 @@ export function MapImageOverlay({
   bounds,
   opacity = 0.85,
   children,
+  ...rest
 }: {
   url: string;
   bounds: [[number, number], [number, number]];
   opacity?: number | undefined;
   children?: ReactNode | undefined;
+  [key: string]: any;
 }) {
   if (!url || !bounds) return null;
-  return (
-    <ImageOverlay url={url} bounds={bounds} opacity={opacity}>
-      {children}
-    </ImageOverlay>
-  );
+  const props: any = { url, bounds, opacity, ...rest };
+  return <ImageOverlay {...props}>{children}</ImageOverlay>;
 }
 
 export { Popup, Tooltip, useMap, useMapEvents };
