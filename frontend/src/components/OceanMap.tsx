@@ -31,12 +31,14 @@ export type OceanMapProps = LeafletMapProps;
 
 // Cache loaded Leaflet module on client
 let clientModulePromise: Promise<typeof import("./LeafletMapClient")> | null = null;
+
 function getClientModule(): Promise<typeof import("./LeafletMapClient")> | null {
   if (typeof window === "undefined") return null;
+
   if (!clientModulePromise) {
-    const modPath = "./LeafletMapClient";
-    clientModulePromise = import(/* @vite-ignore */ modPath);
+    clientModulePromise = import("./LeafletMapClient");
   }
+
   return clientModulePromise;
 }
 
