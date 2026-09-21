@@ -268,7 +268,7 @@ function RootLayout() {
             inset: 0,
             zIndex: -1,
             pointerEvents: 'none',
-            background: 'linear-gradient(180deg, #03111C 0%, #051D2E 30%, #041822 60%, #020E18 100%)',
+            background: 'linear-gradient(180deg, #02070E 0%, #041424 35%, #03101C 70%, #01060B 100%)',
           }}
         />
         <div className="relative min-h-screen flex flex-col">

@@ -59,7 +59,7 @@ function LandingPage() {
       }}
     >
       {/* ════════════════════════════════════════════════════════════
-          OCEAN CURRENT BACKGROUND OVERLAY
+          CINEMATIC MARITIME BACKGROUND OVERLAY
          ════════════════════════════════════════════════════════════ */}
       <div
         aria-hidden="true"
@@ -69,28 +69,71 @@ function LandingPage() {
           zIndex: -1,
           pointerEvents: 'none',
           overflow: 'hidden',
+          backgroundColor: '#02070E',
         }}
       >
-        {/* Depth layering gradients */}
-        <div
+        {/* Layer 1: Cinematic Ocean & Distant Tanker Environment Image */}
+        <img
+          src="/images/ocean-tanker-bg.jpg"
+          alt=""
+          aria-hidden="true"
+          className="landing-bg-img"
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'radial-gradient(ellipse 100% 50% at 60% 30%, rgba(5,32,52,0.4) 0%, transparent 70%)',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'radial-gradient(ellipse 80% 40% at 30% 75%, rgba(3,20,35,0.5) 0%, transparent 65%)',
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: '70% 32%',
+            filter: 'contrast(1.06) brightness(0.82) saturate(0.94)',
           }}
         />
 
-        {/* Flowing current lines */}
+        {/* Layer 2: Deep Blue Atmospheric Maritime Color Grading */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(180deg, rgba(3, 17, 28, 0.42) 0%, rgba(4, 21, 34, 0.28) 45%, rgba(2, 9, 16, 0.65) 100%)',
+            mixBlendMode: 'multiply',
+          }}
+        />
+
+        {/* Layer 3: Ambient Oceanic Depth Tint */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'radial-gradient(ellipse 110% 85% at 75% 28%, rgba(6, 36, 58, 0.22) 0%, rgba(3, 17, 28, 0.42) 55%, rgba(2, 7, 14, 0.72) 100%)',
+          }}
+        />
+
+        {/* Layer 4: Left-Side Dark Gradient for Hero Typography Readability */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(90deg, rgba(2, 7, 14, 0.88) 0%, rgba(2, 7, 14, 0.78) 26%, rgba(2, 7, 14, 0.42) 48%, rgba(2, 7, 14, 0.12) 68%, transparent 85%)',
+          }}
+        />
+
+        {/* Layer 5: SAR Visualization Panel Integration Darkening */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'radial-gradient(ellipse 70% 55% at 78% 46%, rgba(3, 14, 24, 0.38) 0%, transparent 75%)',
+          }}
+        />
+
+        {/* Layer 6: Subtle Secondary SVG Bathymetric / Current Overlays */}
         <svg
           className="landing-currents-svg"
-          viewBox="0 0 2800 1000"
+          viewBox="0 0 3200 1100"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
           preserveAspectRatio="none"
@@ -100,26 +143,163 @@ function LandingPage() {
             left: 0,
             width: '200%',
             height: '100%',
+            opacity: 0.38,
           }}
         >
-          {/* Layer 1: Deep background currents — very faint */}
-          <path d="M0,82 C200,62 400,102 620,78 C840,54 1060,105 1280,82 C1500,59 1720,105 1940,80 C2160,55 2380,102 2600,78 C2800,60 2800,82 2800,82" stroke="rgba(29,42,54,0.4)" strokeWidth="0.7" />
-          <path d="M0,188 C260,158 480,222 740,185 C1000,148 1220,225 1480,188 C1740,151 1960,222 2220,185 C2480,148 2700,218 2800,188" stroke="rgba(29,42,54,0.3)" strokeWidth="1" />
-          <path d="M0,285 C320,268 640,305 960,282 C1280,259 1600,308 1920,285 C2240,262 2560,305 2800,285" stroke="rgba(29,42,54,0.2)" strokeWidth="0.6" />
+          <defs>
+            {/* Faint cyan current highlight gradient */}
+            <linearGradient id="osis-cyan-current-1" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#19B5E6" stopOpacity="0.04" />
+              <stop offset="28%" stopColor="#19B5E6" stopOpacity="0.13" />
+              <stop offset="65%" stopColor="#19B5E6" stopOpacity="0.06" />
+              <stop offset="100%" stopColor="#19B5E6" stopOpacity="0.04" />
+            </linearGradient>
 
-          {/* Layer 2: Mid-depth currents — slightly visible */}
-          <path d="M0,375 C180,342 420,412 660,370 C900,328 1140,418 1380,378 C1620,338 1860,415 2100,372 C2340,329 2580,410 2800,375" stroke="rgba(29,42,54,0.45)" strokeWidth="1.1" />
-          <path d="M0,462 C280,432 540,498 800,458 C1060,418 1320,502 1580,462 C1840,422 2100,500 2360,460 C2620,420 2800,490 2800,462" stroke="rgba(29,42,54,0.35)" strokeWidth="0.8" />
+            {/* Secondary cyan/teal current filament */}
+            <linearGradient id="osis-cyan-current-2" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#19B5E6" stopOpacity="0.03" />
+              <stop offset="45%" stopColor="#19B5E6" stopOpacity="0.11" />
+              <stop offset="78%" stopColor="#2ECF8B" stopOpacity="0.07" />
+              <stop offset="100%" stopColor="#19B5E6" stopOpacity="0.03" />
+            </linearGradient>
 
-          {/* Layer 3: Surface currents — with subtle cyan */}
-          <path d="M0,555 C220,515 460,598 700,548 C940,498 1180,600 1420,552 C1660,504 1900,598 2140,548 C2380,498 2620,592 2800,555" stroke="rgba(25,181,230,0.055)" strokeWidth="1.3" />
-          <path d="M0,648 C340,625 680,678 1020,645 C1360,612 1700,682 2040,648 C2380,614 2720,675 2800,648" stroke="rgba(29,42,54,0.3)" strokeWidth="0.7" />
+            {/* Bathymetric contour gradient */}
+            <linearGradient id="osis-contour-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#173B56" stopOpacity="0.18" />
+              <stop offset="50%" stopColor="#225479" stopOpacity="0.32" />
+              <stop offset="100%" stopColor="#173B56" stopOpacity="0.18" />
+            </linearGradient>
 
-          {/* Layer 4: Deep undertow — faint cyan accent */}
-          <path d="M0,738 C240,710 480,770 720,735 C960,700 1200,775 1440,738 C1680,701 1920,775 2160,738 C2400,701 2640,770 2800,738" stroke="rgba(25,181,230,0.04)" strokeWidth="0.9" />
-          <path d="M0,828 C300,812 600,848 900,825 C1200,802 1500,850 1800,828 C2100,806 2400,848 2800,828" stroke="rgba(29,42,54,0.22)" strokeWidth="0.6" />
-          <path d="M0,920 C260,905 520,938 780,918 C1040,898 1300,942 1560,920 C1820,898 2080,940 2340,918 C2600,896 2800,935 2800,920" stroke="rgba(29,42,54,0.15)" strokeWidth="0.5" />
+            {/* Seamless 1600px ocean current unit */}
+            <g id="ocean-currents-tile">
+              {/* Path 1: Upper Horizon Marine Swell — broad, gentle */}
+              <path
+                d="M0,65 C140,53 320,85 520,70 C720,55 940,95 1160,80 C1340,65 1460,77 1600,65"
+                stroke="rgba(24,56,80,0.3)"
+                strokeWidth="0.75"
+              />
+
+              {/* Path 2: Secondary Upper Current */}
+              <path
+                d="M0,140 C160,160 380,110 600,125 C820,140 1060,185 1280,165 C1420,150 1440,120 1600,140"
+                stroke="rgba(20,50,74,0.25)"
+                strokeWidth="0.9"
+              />
+
+              {/* Path 3: Sub-surface Bathymetric Contour */}
+              <path
+                d="M0,225 C150,200 360,255 580,240 C800,225 1040,180 1260,205 C1410,220 1450,250 1600,225"
+                stroke="url(#osis-contour-grad)"
+                strokeWidth="0.8"
+              />
+
+              {/* Path 4: Open Ocean Meander */}
+              <path
+                d="M0,310 C170,340 390,280 620,300 C850,320 1080,365 1300,340 C1430,325 1430,280 1600,310"
+                stroke="rgba(28,66,94,0.32)"
+                strokeWidth="1.1"
+              />
+
+              {/* Path 5: Primary Current Jet — with faint Cyan luminescence */}
+              <path
+                d="M0,395 C180,373 400,430 630,410 C860,390 1100,455 1320,430 C1440,415 1420,417 1600,395"
+                stroke="url(#osis-cyan-current-1)"
+                strokeWidth="1.4"
+              />
+
+              {/* Path 6: Companion Current Filament (faint cyan) */}
+              <path
+                d="M0,425 C170,405 390,460 620,440 C850,420 1090,485 1310,460 C1430,445 1430,445 1600,425"
+                stroke="rgba(25,181,230,0.06)"
+                strokeWidth="0.8"
+              />
+
+              {/* Path 7: Deep Pelagic Contour */}
+              <path
+                d="M0,515 C160,543 380,480 600,500 C820,520 1060,570 1280,545 C1420,530 1440,487 1600,515"
+                stroke="rgba(22,58,84,0.28)"
+                strokeWidth="1.0"
+              />
+
+              {/* Path 8: Sub-Surface Hydrodynamic Jet (faint cyan/emerald) */}
+              <path
+                d="M0,610 C190,578 410,650 640,625 C870,600 1110,675 1330,645 C1440,630 1410,642 1600,610"
+                stroke="url(#osis-cyan-current-2)"
+                strokeWidth="1.3"
+              />
+
+              {/* Path 9: Tactical Drift Vector Stream (dashed) */}
+              <path
+                d="M0,635 C180,607 400,675 630,650 C860,625 1100,700 1320,670 C1440,655 1420,663 1600,635"
+                stroke="rgba(25,181,230,0.08)"
+                strokeWidth="0.85"
+                strokeDasharray="8 10"
+              />
+
+              {/* Path 10: Mid-Abyssal Shelf Line */}
+              <path
+                d="M0,725 C150,749 370,695 590,715 C810,735 1050,780 1270,755 C1410,740 1450,701 1600,725"
+                stroke="url(#osis-contour-grad)"
+                strokeWidth="1.0"
+              />
+
+              {/* Path 11: Deep Under-Trench Stream (faint cyan highlight) */}
+              <path
+                d="M0,820 C175,794 395,860 625,835 C855,810 1095,880 1315,850 C1435,835 1425,846 1600,820"
+                stroke="rgba(25,181,230,0.07)"
+                strokeWidth="1.1"
+              />
+
+              {/* Path 12: Lower Bathymetric Step */}
+              <path
+                d="M0,915 C160,935 380,885 600,905 C820,925 1060,970 1280,945 C1420,930 1440,895 1600,915"
+                stroke="rgba(18,48,70,0.22)"
+                strokeWidth="0.8"
+              />
+
+              {/* Path 13: Abyssal Floor Boundary */}
+              <path
+                d="M0,1005 C180,987 400,1040 630,1020 C860,1000 1100,1060 1320,1035 C1440,1020 1420,1023 1600,1005"
+                stroke="rgba(15,40,60,0.18)"
+                strokeWidth="0.7"
+              />
+
+              {/* Organic Ocean Gyre Swirls & Regional Boundary Currents (Negative space / Right-side) */}
+              <path
+                d="M 860,160 C 1040,110 1260,150 1420,250 C 1530,320 1580,440 1510,530 C 1430,620 1290,640 1180,590 C 1080,540 1060,430 1140,360 C 1210,300 1330,310 1400,370"
+                stroke="rgba(25,181,230,0.05)"
+                strokeWidth="0.9"
+              />
+              <path
+                d="M 940,710 C 1080,660 1260,690 1390,770 C 1490,835 1530,925 1460,990"
+                stroke="rgba(25,181,230,0.055)"
+                strokeWidth="0.85"
+                strokeDasharray="6 8"
+              />
+              <path
+                d="M 520,35 C 700,95 940,65 1170,135 C 1370,195 1510,155 1600,185"
+                stroke="rgba(24,60,88,0.22)"
+                strokeWidth="0.75"
+              />
+            </g>
+          </defs>
+
+          {/* First tile (0 to 1600) */}
+          <use href="#ocean-currents-tile" x="0" y="0" />
+          {/* Second tile (1600 to 3200) — guaranteed seamless loop */}
+          <use href="#ocean-currents-tile" x="1600" y="0" />
         </svg>
+
+        {/* Layer 7: Atmospheric perimeter vignette & bottom section grounding */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'radial-gradient(ellipse 95% 85% at 50% 50%, transparent 50%, rgba(2, 6, 12, 0.45) 75%, rgba(1, 4, 8, 0.88) 100%), ' +
+              'linear-gradient(180deg, transparent 65%, rgba(7, 11, 16, 0.55) 82%, rgba(7, 11, 16, 0.95) 100%)',
+          }}
+        />
       </div>
 
       {/* ════════════════════════════════════════════════════════════
@@ -849,6 +1029,9 @@ function LandingPage() {
           .landing-pipeline-grid {
             grid-template-columns: repeat(2, 1fr) !important;
           }
+          .landing-bg-img {
+            object-position: 74% 28% !important;
+          }
         }
 
         /* Mobile */
@@ -858,6 +1041,9 @@ function LandingPage() {
           }
           .landing-hero-visual {
             min-height: 300px;
+          }
+          .landing-bg-img {
+            object-position: 78% 22% !important;
           }
         }
 
@@ -894,18 +1080,19 @@ function LandingPage() {
           to { stroke-dashoffset: -22; }
         }
 
-        /* Ocean current lines — very slow horizontal drift */
+        /* Ocean current lines — majestic, ultra-subtle oceanic drift */
         .landing-currents-svg {
-          animation: landing-currents-flow 90s linear infinite;
+          animation: landing-currents-flow 120s linear infinite;
+          will-change: transform;
         }
         @keyframes landing-currents-flow {
-          from { transform: translateX(0); }
-          to { transform: translateX(-50%); }
+          from { transform: translate3d(0, 0, 0); }
+          to { transform: translate3d(-50%, 0, 0); }
         }
 
         @media (prefers-reduced-motion: reduce) {
           .landing-currents-svg {
-            animation: none;
+            animation: none !important;
           }
         }
       `}</style>
