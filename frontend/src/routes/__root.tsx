@@ -260,7 +260,17 @@ function RootLayout() {
   if (isLanding) {
     return (
       <>
-        <div className="om-stars" aria-hidden="true" />
+        {/* Deep ocean background */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: -1,
+            pointerEvents: 'none',
+            background: 'linear-gradient(180deg, #03111C 0%, #051D2E 30%, #041822 60%, #020E18 100%)',
+          }}
+        />
         <div className="relative min-h-screen flex flex-col">
           {/* Minimal landing header */}
           <header

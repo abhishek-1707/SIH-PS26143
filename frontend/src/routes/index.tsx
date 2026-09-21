@@ -59,6 +59,70 @@ function LandingPage() {
       }}
     >
       {/* ════════════════════════════════════════════════════════════
+          OCEAN CURRENT BACKGROUND OVERLAY
+         ════════════════════════════════════════════════════════════ */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: -1,
+          pointerEvents: 'none',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Depth layering gradients */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'radial-gradient(ellipse 100% 50% at 60% 30%, rgba(5,32,52,0.4) 0%, transparent 70%)',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'radial-gradient(ellipse 80% 40% at 30% 75%, rgba(3,20,35,0.5) 0%, transparent 65%)',
+          }}
+        />
+
+        {/* Flowing current lines */}
+        <svg
+          className="landing-currents-svg"
+          viewBox="0 0 2800 1000"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          preserveAspectRatio="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '200%',
+            height: '100%',
+          }}
+        >
+          {/* Layer 1: Deep background currents — very faint */}
+          <path d="M0,82 C200,62 400,102 620,78 C840,54 1060,105 1280,82 C1500,59 1720,105 1940,80 C2160,55 2380,102 2600,78 C2800,60 2800,82 2800,82" stroke="rgba(29,42,54,0.4)" strokeWidth="0.7" />
+          <path d="M0,188 C260,158 480,222 740,185 C1000,148 1220,225 1480,188 C1740,151 1960,222 2220,185 C2480,148 2700,218 2800,188" stroke="rgba(29,42,54,0.3)" strokeWidth="1" />
+          <path d="M0,285 C320,268 640,305 960,282 C1280,259 1600,308 1920,285 C2240,262 2560,305 2800,285" stroke="rgba(29,42,54,0.2)" strokeWidth="0.6" />
+
+          {/* Layer 2: Mid-depth currents — slightly visible */}
+          <path d="M0,375 C180,342 420,412 660,370 C900,328 1140,418 1380,378 C1620,338 1860,415 2100,372 C2340,329 2580,410 2800,375" stroke="rgba(29,42,54,0.45)" strokeWidth="1.1" />
+          <path d="M0,462 C280,432 540,498 800,458 C1060,418 1320,502 1580,462 C1840,422 2100,500 2360,460 C2620,420 2800,490 2800,462" stroke="rgba(29,42,54,0.35)" strokeWidth="0.8" />
+
+          {/* Layer 3: Surface currents — with subtle cyan */}
+          <path d="M0,555 C220,515 460,598 700,548 C940,498 1180,600 1420,552 C1660,504 1900,598 2140,548 C2380,498 2620,592 2800,555" stroke="rgba(25,181,230,0.055)" strokeWidth="1.3" />
+          <path d="M0,648 C340,625 680,678 1020,645 C1360,612 1700,682 2040,648 C2380,614 2720,675 2800,648" stroke="rgba(29,42,54,0.3)" strokeWidth="0.7" />
+
+          {/* Layer 4: Deep undertow — faint cyan accent */}
+          <path d="M0,738 C240,710 480,770 720,735 C960,700 1200,775 1440,738 C1680,701 1920,775 2160,738 C2400,701 2640,770 2800,738" stroke="rgba(25,181,230,0.04)" strokeWidth="0.9" />
+          <path d="M0,828 C300,812 600,848 900,825 C1200,802 1500,850 1800,828 C2100,806 2400,848 2800,828" stroke="rgba(29,42,54,0.22)" strokeWidth="0.6" />
+          <path d="M0,920 C260,905 520,938 780,918 C1040,898 1300,942 1560,920 C1820,898 2080,940 2340,918 C2600,896 2800,935 2800,920" stroke="rgba(29,42,54,0.15)" strokeWidth="0.5" />
+        </svg>
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════
           HERO SECTION
          ════════════════════════════════════════════════════════════ */}
       <section
@@ -828,6 +892,21 @@ function LandingPage() {
         @keyframes landing-drift-k {
           from { stroke-dashoffset: 0; }
           to { stroke-dashoffset: -22; }
+        }
+
+        /* Ocean current lines — very slow horizontal drift */
+        .landing-currents-svg {
+          animation: landing-currents-flow 90s linear infinite;
+        }
+        @keyframes landing-currents-flow {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .landing-currents-svg {
+            animation: none;
+          }
         }
       `}</style>
     </div>
