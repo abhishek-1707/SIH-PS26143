@@ -31,44 +31,50 @@
 }
 
 :root {
-  /* Modest corner radius for operational software (4px default) */
-  --radius: 0.25rem;
+  --radius: 0.375rem;
 
-  /* Solid maritime/geospatial dark palette */
-  --background: oklch(0.12 0.015 250); /* #0b0f17 */
-  --foreground: oklch(0.92 0.005 240); /* #e6edf3 */
-  --card: oklch(0.155 0.018 250); /* #111722 solid surface */
-  --card-foreground: oklch(0.92 0.005 240);
-  --popover: oklch(0.155 0.018 250);
-  --popover-foreground: oklch(0.92 0.005 240);
-  --primary: oklch(0.64 0.12 235); /* Restrained operational steel blue */
-  --primary-foreground: oklch(0.98 0.005 240);
-  --secondary: oklch(0.19 0.02 250); /* Slightly lighter dark surface */
-  --secondary-foreground: oklch(0.9 0.005 240);
-  --muted: oklch(0.19 0.02 250);
-  --muted-foreground: oklch(0.62 0.015 240); /* Cool gray #7e8c9f */
-  --accent: oklch(0.22 0.025 245);
-  --accent-foreground: oklch(0.92 0.005 240);
-  --destructive: oklch(0.58 0.18 25); /* Strict alert red only */
-  --destructive-foreground: oklch(0.96 0.005 240);
-  --border: oklch(0.24 0.02 250); /* Hairline border #212c3e */
-  --input: oklch(0.24 0.02 250);
-  --ring: oklch(0.64 0.12 235);
+  /* ── Core surfaces ── */
+  --background: #070B10;
+  --header: #090E15;
+  --foreground: #F2F6F8;
+  --card: #0D141C;
+  --card-foreground: #F2F6F8;
+  --popover: #0D141C;
+  --popover-foreground: #F2F6F8;
 
-  /* Single restrained maritime accent (matte operational steel blue, not glowing neon) */
-  --accent-blue: oklch(0.64 0.11 235); /* Restrained operational blue */
-  --accent-cyan: oklch(0.64 0.11 235); /* Same restrained operational blue */
+  /* ── Interactive / primary ── */
+  --primary: #19B5E6;
+  --primary-foreground: #070B10;
 
-  /* Semantic indicators: ONLY for confirmed states, warnings, and alerts */
-  --accent-emerald: oklch(0.68 0.14 150); /* Green = confirmed/success only */
-  --accent-amber: oklch(0.72 0.12 75); /* Amber = uncertainty/warning only */
-  --accent-rose: oklch(0.62 0.18 25); /* Red = actual alert only */
+  /* ── Surfaces ── */
+  --secondary: #111A24;
+  --secondary-foreground: #E8EDF2;
+  --muted: #111A24;
+  --muted-foreground: #8B9AA7;
+  --accent: #162230;
+  --accent-foreground: #F2F6F8;
 
-  /* Map palette - technical hydrographic chart */
-  --map-bg: oklch(0.1 0.015 250); /* Deep nautical matte dark */
-  --map-grid: oklch(0.22 0.02 250 / 0.45);
-  --map-swell: oklch(0.28 0.03 235 / 0.15);
-  --map-label: oklch(0.8 0.01 240);
+  /* ── Semantic ── */
+  --destructive: #FF4D6D;
+  --destructive-foreground: #F2F6F8;
+
+  /* ── Borders & inputs ── */
+  --border: #1D2A36;
+  --input: #1D2A36;
+  --ring: #19B5E6;
+
+  /* ── Accent palette ── */
+  --accent-blue: #19B5E6;
+  --accent-cyan: #19B5E6;
+  --accent-emerald: #2ECF8B;
+  --accent-amber: #F5B82E;
+  --accent-rose: #FF4D6D;
+
+  /* ── Map palette ── */
+  --map-bg: #060A0F;
+  --map-grid: rgba(29, 42, 54, 0.45);
+  --map-swell: rgba(25, 181, 230, 0.06);
+  --map-label: #B0BEC5;
 }
 
 @layer base {
@@ -82,88 +88,86 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    /* Modern system sans-serif stack — no external dependency */
     font-family:
-      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+      Roboto, "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
   }
+  /* Monospace for technical data: coordinates, timestamps, IDs */
   code,
   kbd,
   samp,
-  pre {
+  pre,
+  .font-mono {
     font-family:
-      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-      monospace;
+      "JetBrains Mono", "Cascadia Code", "Fira Code",
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      "Liberation Mono", "Courier New", monospace;
+    font-feature-settings: "liga" 1, "calt" 1;
   }
 }
 
-/* Subtle, non-distracting hairline technical grid */
+/* ─── Subtle technical grid background ─── */
 .om-stars {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background-image:
-    linear-gradient(to right, oklch(0.22 0.015 250 / 0.18) 1px, transparent 1px),
-    linear-gradient(to bottom, oklch(0.22 0.015 250 / 0.18) 1px, transparent 1px);
-  background-size: 48px 48px;
-  opacity: 0.5;
+    linear-gradient(to right, rgba(29, 42, 54, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(29, 42, 54, 0.12) 1px, transparent 1px);
+  background-size: 56px 56px;
+  opacity: 0.4;
 }
 
-/* Simple mechanical swell line animation for map */
+/* ─── Mechanical swell line for map ─── */
 .om-swell {
   animation: om-swell-move 30s ease-in-out infinite alternate;
 }
 @keyframes om-swell-move {
-  from {
-    transform: translateX(-8px);
-  }
-  to {
-    transform: translateX(8px);
-  }
+  from { transform: translateX(-8px); }
+  to   { transform: translateX(8px); }
 }
 
-/* Restrained dot animation without neon glow */
+/* ─── Restrained dot pulse (no glow) ─── */
 .om-pulse-dot {
   animation: om-blink 2.4s ease-in-out infinite;
 }
 @keyframes om-blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
 }
 
-/* Modest transition animations */
+/* ─── Transition animations ─── */
 .om-fade {
-  animation: om-fade-k 0.12s ease-out;
+  animation: om-fade-k 0.15s ease-out;
 }
 @keyframes om-fade-k {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-.om-rise {
-  animation: om-rise-k 0.15s ease-out;
-}
-@keyframes om-rise-k {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-/* Technical slider */
+.om-rise {
+  animation: om-rise-k 0.18s ease-out;
+}
+@keyframes om-rise-k {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.om-slide-up {
+  animation: om-slide-up-k 0.22s ease-out both;
+}
+@keyframes om-slide-up-k {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ─── Technical slider ─── */
 input[type="range"].om-range {
   -webkit-appearance: none;
   appearance: none;
@@ -181,7 +185,7 @@ input[type="range"].om-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   height: 14px;
   width: 14px;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--accent-amber);
   border: 1px solid var(--border);
   cursor: grab;
@@ -189,13 +193,13 @@ input[type="range"].om-range::-webkit-slider-thumb {
 input[type="range"].om-range::-moz-range-thumb {
   height: 14px;
   width: 14px;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--accent-amber);
   border: 1px solid var(--border);
   cursor: grab;
 }
 
-/* Dense technical scrollbar */
+/* ─── Dense technical scrollbar ─── */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -235,7 +239,7 @@ input[type="range"].om-range::-moz-range-thumb {
   filter: brightness(0.65) invert(1) contrast(2.4) hue-rotate(198deg) saturate(0.32);
 }
 
-/* Keep vector overlays (spill polygons, drift polylines, markers, popups) in original crisp colors */
+/* Keep vector overlays in original crisp colors */
 .osis-leaflet-map .leaflet-overlay-pane,
 .osis-leaflet-map .leaflet-marker-pane,
 .osis-leaflet-map .leaflet-popup-pane,
@@ -287,7 +291,7 @@ input[type="range"].om-range::-moz-range-thumb {
 
 /* Subtle dark attribution control */
 .osis-leaflet-map .leaflet-control-attribution {
-  background: rgba(11, 15, 23, 0.85) !important;
+  background: rgba(7, 11, 16, 0.85) !important;
   color: var(--muted-foreground) !important;
   font-family: ui-monospace, SFMono-Regular, monospace !important;
   font-size: 9px !important;
@@ -322,4 +326,3 @@ input[type="range"].om-range::-moz-range-thumb {
   animation: osis-pulse 2.2s infinite ease-out;
   transform-origin: center;
 }
-

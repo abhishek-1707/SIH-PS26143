@@ -27,7 +27,7 @@ import { OutcomeBadge } from "../components/ui-kit";
 import { getIncidentLabel } from "../api/incidents";
 
 const NAV: { to: string; label: string; icon: typeof LayoutDashboard; exact?: boolean }[] = [
-  { to: "/", label: "Overview", icon: LayoutDashboard, exact: true },
+  { to: "/overview", label: "Overview", icon: LayoutDashboard, exact: true },
   { to: "/satellite", label: "Detection", icon: Radar },
   { to: "/backtracking", label: "Drift", icon: Compass },
   { to: "/ais", label: "Vessel Attribution", icon: Ship },
@@ -254,24 +254,71 @@ function RootLayout() {
   const currentLabel = activeReport ? getIncidentLabel(activeReport) : null;
   const isDemo = !activeReport || activeReport.mode === "DEMO" || !activeReport.mode;
 
+  /* Landing page gets a minimal layout — no operational chrome */
+  const isLanding = currentPath === "/";
+
+  if (isLanding) {
+    return (
+      <>
+        <div className="om-stars" aria-hidden="true" />
+        <div className="relative min-h-screen flex flex-col">
+          {/* Minimal landing header */}
+          <header
+            className="sticky top-0 z-40 border-b border-border"
+            style={{ backgroundColor: 'var(--header)' }}
+          >
+            <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
+              <Link to="/" className="group flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--primary)]/30 bg-[var(--primary)]/10 font-mono text-xs font-bold text-[var(--primary)] group-hover:bg-[var(--primary)]/15 transition-colors">
+                  OS
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold tracking-[0.08em] text-foreground font-mono">
+                    O.S.I.S.
+                  </div>
+                  <div className="text-[10px] text-muted-foreground font-mono">
+                    Oil Spill Identification &amp; Source Attribution
+                  </div>
+                </div>
+              </Link>
+              <Link
+                to="/overview"
+                className="inline-flex items-center gap-2 rounded-md bg-[var(--primary)] px-4 py-2 text-xs font-mono font-semibold text-[var(--primary-foreground)] hover:opacity-90 transition-opacity"
+              >
+                Open Dashboard
+              </Link>
+            </div>
+          </header>
+
+          {/* Full-bleed content area for landing */}
+          <main className="flex-1 w-full">
+            <div className="mx-auto max-w-7xl px-5 sm:px-6 py-0">
+              <Outlet />
+            </div>
+          </main>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="om-stars" aria-hidden="true" />
       <div className="relative min-h-screen flex flex-col">
         {/* Main Header */}
-        <header className="sticky top-0 z-40 border-b border-border bg-background/95">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-y-3 px-5 py-2.5">
+        <header className="sticky top-0 z-40 border-b border-border" style={{ backgroundColor: 'var(--header)' }}>
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-y-3 px-6 py-3">
             {/* Left brand */}
-            <Link to="/" className="group flex items-center gap-2.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded border border-border bg-secondary font-mono text-xs font-bold text-foreground group-hover:border-[var(--primary)] transition-colors">
+            <Link to="/" className="group flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--primary)]/30 bg-[var(--primary)]/10 font-mono text-xs font-bold text-[var(--primary)] group-hover:bg-[var(--primary)]/15 transition-colors">
                 OS
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-semibold tracking-tight text-foreground flex items-center gap-2 font-mono">
-                  <span>O.S.I.S.</span>
+                <div className="text-sm font-bold tracking-[0.08em] text-foreground font-mono">
+                  O.S.I.S.
                 </div>
-                <div className="text-[10px] text-muted-foreground font-mono hidden md:block">
-                  Oil Spill Identification &amp; Source Attribution System
+                <div className="text-[10px] text-muted-foreground font-mono">
+                  Oil Spill Identification &amp; Source Attribution
                 </div>
               </div>
             </Link>
@@ -295,8 +342,8 @@ function RootLayout() {
           </div>
 
           {/* Navigation Bar */}
-          <div className="border-t border-border bg-card/50">
-            <nav className="mx-auto flex max-w-7xl items-center gap-0.5 px-5 py-0">
+          <div className="border-t border-border/60 bg-[var(--background)]/40">
+            <nav className="mx-auto flex max-w-7xl items-center gap-0 px-6">
               {NAV.map((n) => {
                 const Icon = n.icon;
                 const isActive = n.exact
@@ -306,13 +353,13 @@ function RootLayout() {
                   <Link
                     key={n.to}
                     to={n.to}
-                    className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
+                    className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 ${
                       isActive
-                        ? "border-[var(--primary)] text-foreground font-semibold"
-                        : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                        ? "border-[var(--primary)] text-[var(--primary)] font-semibold"
+                        : "border-transparent text-muted-foreground hover:text-foreground hover:border-[var(--border)]"
                     }`}
                   >
-                    <Icon className="h-3.5 w-3.5 opacity-80" />
+                    <Icon className={`h-3.5 w-3.5 ${isActive ? "opacity-100" : "opacity-60"}`} />
                     <span>{n.label}</span>
                   </Link>
                 );
@@ -323,30 +370,31 @@ function RootLayout() {
 
         {/* Auto-loading / switching indicator */}
         {(autoLoading || isSwitchingIncident) && (
-          <div className="bg-[var(--primary)]/10 border-b border-[var(--primary)]/20 px-5 py-2 text-center text-xs font-mono text-[var(--primary)]">
+          <div className="bg-[var(--primary)]/8 border-b border-[var(--primary)]/15 px-6 py-2 text-center text-xs font-mono text-[var(--primary)]">
             <Loader2 className="inline h-3 w-3 animate-spin mr-2" />
             Loading incident data — please wait…
           </div>
         )}
 
         {/* Main Viewport */}
-        <main className="mx-auto max-w-7xl flex-1 w-full px-4 sm:px-5 py-6">
+        <main className="mx-auto max-w-7xl flex-1 w-full px-5 sm:px-6 py-7">
           <Outlet />
         </main>
 
         {/* Footer */}
-        <footer className="border-t border-border bg-card py-3 px-5 text-xs text-muted-foreground font-mono">
+        <footer className="border-t border-border/60 py-3.5 px-6 text-[11px] text-muted-foreground/80 font-mono" style={{ backgroundColor: 'var(--header)' }}>
           <div className="mx-auto max-w-7xl flex flex-wrap items-center justify-between gap-3">
             <div>
-              <span>O.S.I.S. &middot; SIH PS26143</span>
-              <span className="hidden md:inline">
-                {" "}
-                &middot; Analytical evidence only, not legal attribution
+              <span className="text-muted-foreground">O.S.I.S.</span>
+              <span className="text-muted-foreground/50"> · </span>
+              <span>SIH PS26143</span>
+              <span className="hidden md:inline text-muted-foreground/50">
+                {" "}· Analytical evidence only, not legal attribution
               </span>
             </div>
-            <div className="flex items-center gap-3.5 text-[11px]">
+            <div className="flex items-center gap-4 text-[11px]">
               {NAV.map((n) => (
-                <Link key={n.to} to={n.to} className="hover:text-foreground">
+                <Link key={n.to} to={n.to} className="hover:text-foreground transition-colors">
                   {n.label}
                 </Link>
               ))}

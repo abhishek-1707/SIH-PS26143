@@ -14,10 +14,11 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={`rounded border border-border bg-card ${className}`}>
+    <section className={`rounded-md border border-border bg-card ${className}`}>
       {title && (
-        <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
-          <div className="flex items-center gap-2">
+        <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-0.5 h-4 rounded-full bg-[var(--primary)]" />
             <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground font-mono">
               {title}
             </h2>
@@ -42,6 +43,17 @@ export function Stat({
   hint?: string;
   highlight?: "cyan" | "amber" | "emerald" | "rose" | undefined;
 }) {
+  const borderClass =
+    highlight === "cyan"
+      ? "border-[var(--accent-blue)]"
+      : highlight === "amber"
+        ? "border-amber-400"
+        : highlight === "emerald"
+          ? "border-emerald-400"
+          : highlight === "rose"
+            ? "border-rose-400"
+            : "border-border";
+
   const highlightClass =
     highlight === "cyan"
       ? "text-[var(--accent-blue)] font-semibold"
@@ -54,11 +66,11 @@ export function Stat({
             : "text-foreground font-medium";
 
   return (
-    <div className="border-l-2 border-border pl-3 py-0.5 space-y-0.5">
+    <div className={`border-l-2 ${borderClass} pl-3.5 py-1 space-y-0.5`}>
       <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground font-mono">
         {label}
       </div>
-      <div className={`text-lg tabular-nums ${highlightClass}`}>{value}</div>
+      <div className={`text-xl tabular-nums font-mono ${highlightClass}`}>{value}</div>
       {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
     </div>
   );
@@ -93,9 +105,9 @@ export function Meter({
           {Math.round(value)}%
         </span>
       </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded bg-secondary">
+      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-secondary">
         <div
-          className={`h-full rounded ${barColor} transition-[width] duration-300 ease-out`}
+          className={`h-full rounded-full ${barColor} transition-[width] duration-300 ease-out`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -129,7 +141,7 @@ export function StatusDot({ label }: { label: string }) {
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] font-mono ${textClass}`}
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] uppercase tracking-[0.12em] font-mono ${textClass}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${dotBg}`} />
       {label}
@@ -141,15 +153,15 @@ export function OutcomeBadge({ outcome }: { outcome?: string | null }) {
   if (!outcome) return null;
   if (outcome === "SPILL_DETECTED") {
     return (
-      <div className="inline-flex items-center gap-2 rounded border border-rose-500/50 bg-rose-500/10 px-2.5 py-1 text-xs font-mono font-semibold text-rose-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+      <div className="inline-flex items-center gap-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-2.5 py-1 text-xs font-mono font-semibold text-rose-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-rose-500 om-pulse-dot" />
         SPILL DETECTED
       </div>
     );
   }
   if (outcome === "NO_SPILL_DETECTED") {
     return (
-      <div className="inline-flex items-center gap-2 rounded border border-emerald-500/50 bg-emerald-500/10 px-2.5 py-1 text-xs font-mono font-semibold text-emerald-400">
+      <div className="inline-flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs font-mono font-semibold text-emerald-400">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
         NO SPILL DETECTED
       </div>
@@ -157,7 +169,7 @@ export function OutcomeBadge({ outcome }: { outcome?: string | null }) {
   }
   if (outcome === "ANALYSIS_INCONCLUSIVE") {
     return (
-      <div className="inline-flex items-center gap-2 rounded border border-amber-500/50 bg-amber-500/10 px-2.5 py-1 text-xs font-mono font-semibold text-amber-300">
+      <div className="inline-flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-mono font-semibold text-amber-300">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
         ANALYSIS INCONCLUSIVE
       </div>
@@ -194,7 +206,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="om-rise relative z-10 w-full max-w-lg rounded border border-border bg-card shadow-2xl"
+        className="om-rise relative z-10 w-full max-w-lg rounded-md border border-border bg-card shadow-2xl"
       >
         <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-3.5">
           <div>
@@ -204,7 +216,7 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground font-mono transition-colors hover:bg-secondary hover:text-foreground"
+            className="rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground font-mono transition-colors hover:bg-secondary hover:text-foreground"
           >
             Close
           </button>
