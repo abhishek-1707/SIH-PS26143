@@ -84,8 +84,8 @@ function LandingPage() {
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            objectPosition: '70% 32%',
-            filter: 'contrast(1.06) brightness(0.82) saturate(0.94)',
+            objectPosition: '52% 24%',
+            filter: 'contrast(1.08) brightness(0.96) saturate(1.06)',
           }}
         />
 
@@ -95,7 +95,7 @@ function LandingPage() {
             position: 'absolute',
             inset: 0,
             background:
-              'linear-gradient(180deg, rgba(3, 17, 28, 0.42) 0%, rgba(4, 21, 34, 0.28) 45%, rgba(2, 9, 16, 0.65) 100%)',
+              'linear-gradient(180deg, rgba(3, 14, 24, 0.22) 0%, rgba(2, 9, 18, 0.12) 42%, rgba(2, 8, 15, 0.52) 100%)',
             mixBlendMode: 'multiply',
           }}
         />
@@ -106,17 +106,17 @@ function LandingPage() {
             position: 'absolute',
             inset: 0,
             background:
-              'radial-gradient(ellipse 110% 85% at 75% 28%, rgba(6, 36, 58, 0.22) 0%, rgba(3, 17, 28, 0.42) 55%, rgba(2, 7, 14, 0.72) 100%)',
+              'radial-gradient(ellipse 110% 85% at 55% 25%, rgba(6, 36, 58, 0.15) 0%, rgba(3, 17, 28, 0.32) 55%, rgba(2, 7, 14, 0.65) 100%)',
           }}
         />
 
-        {/* Layer 4: Left-Side Dark Gradient for Hero Typography Readability */}
+        {/* Layer 4: Left-Side Dark Gradient for Hero Typography Readability (Ocean visible beneath) */}
         <div
           style={{
             position: 'absolute',
             inset: 0,
             background:
-              'linear-gradient(90deg, rgba(2, 7, 14, 0.88) 0%, rgba(2, 7, 14, 0.78) 26%, rgba(2, 7, 14, 0.42) 48%, rgba(2, 7, 14, 0.12) 68%, transparent 85%)',
+              'linear-gradient(90deg, rgba(3, 8, 15, 0.76) 0%, rgba(3, 8, 15, 0.58) 35%, rgba(3, 8, 15, 0.2) 60%, transparent 80%)',
           }}
         />
 
@@ -126,11 +126,11 @@ function LandingPage() {
             position: 'absolute',
             inset: 0,
             background:
-              'radial-gradient(ellipse 70% 55% at 78% 46%, rgba(3, 14, 24, 0.38) 0%, transparent 75%)',
+              'radial-gradient(ellipse 70% 55% at 78% 46%, rgba(3, 14, 24, 0.28) 0%, transparent 75%)',
           }}
         />
 
-        {/* Layer 6: Subtle Secondary SVG Bathymetric / Current Overlays */}
+        {/* Layer 6: Subtle Secondary SVG Bathymetric / Current Overlays (Framing Flanks) */}
         <svg
           className="landing-currents-svg"
           viewBox="0 0 3200 1100"
@@ -143,7 +143,11 @@ function LandingPage() {
             left: 0,
             width: '200%',
             height: '100%',
-            opacity: 0.38,
+            opacity: 0.55,
+            maskImage:
+              'radial-gradient(ellipse 65% 65% at 50% 42%, transparent 20%, rgba(0,0,0,0.45) 55%, black 100%)',
+            WebkitMaskImage:
+              'radial-gradient(ellipse 65% 65% at 50% 42%, transparent 20%, rgba(0,0,0,0.45) 55%, black 100%)',
           }}
         >
           <defs>
@@ -296,8 +300,8 @@ function LandingPage() {
             position: 'absolute',
             inset: 0,
             background:
-              'radial-gradient(ellipse 95% 85% at 50% 50%, transparent 50%, rgba(2, 6, 12, 0.45) 75%, rgba(1, 4, 8, 0.88) 100%), ' +
-              'linear-gradient(180deg, transparent 65%, rgba(7, 11, 16, 0.55) 82%, rgba(7, 11, 16, 0.95) 100%)',
+              'radial-gradient(ellipse 95% 85% at 50% 50%, transparent 55%, rgba(2, 6, 12, 0.35) 80%, rgba(1, 4, 8, 0.78) 100%), ' +
+              'linear-gradient(180deg, transparent 65%, rgba(7, 11, 16, 0.45) 85%, rgba(7, 11, 16, 0.95) 100%)',
           }}
         />
       </div>
@@ -473,8 +477,11 @@ function LandingPage() {
               width: "100%",
               aspectRatio: "1 / 0.9",
               borderRadius: 10,
-              border: "1px solid var(--border)",
-              background: "#0A1018",
+              border: "1px solid rgba(25, 181, 230, 0.2)",
+              background: "rgba(9, 15, 23, 0.72)",
+              backdropFilter: "blur(14px)",
+              WebkitBackdropFilter: "blur(14px)",
+              boxShadow: "0 12px 40px -10px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(25, 181, 230, 0.15)",
               overflow: "hidden",
             }}
             className="landing-hero-visual"
@@ -1030,7 +1037,7 @@ function LandingPage() {
             grid-template-columns: repeat(2, 1fr) !important;
           }
           .landing-bg-img {
-            object-position: 74% 28% !important;
+            object-position: 52% 20% !important;
           }
         }
 
@@ -1043,7 +1050,7 @@ function LandingPage() {
             min-height: 300px;
           }
           .landing-bg-img {
-            object-position: 78% 22% !important;
+            object-position: 52% 16% !important;
           }
         }
 
